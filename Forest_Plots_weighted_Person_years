@@ -1,0 +1,1838 @@
+---
+title: "Statistical analyzes : Simon Couillard <br><br>"
+subtitle:
+  "Project : ORACLE <br>"
+author: "Reference number : 0726 <br><br> By : Samuel Lemaire-Paquette, statistician"
+date: " Last update : `r Sys.Date()`<br><br>"
+output: 
+  html_document:
+    theme : united
+    df_print: paged
+    toc: true
+    number_sections: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, echo=FALSE}
+# Define variable containing url
+url <- "https://www.crchus.ca/clients/SanteEstrie/Sous-sites/Centres_de_recherche/CRCHUS/Medias-publications/signature_CR-CHUS_rvb-s2.jpg"
+```
+
+<script>
+   $(document).ready(function() {
+     $head = $('#header');
+     $head.prepend('<img src="`r url`" style=\"float: right;width: 200px;\"/>')
+   });
+</script>
+
+<style>
+body {
+text-align: justify}
+</style>
+
+<style type="text/css">
+  body{
+  font-size: 12pt;
+}
+</style>
+
+<style type="text/css">
+.main-container {
+  max-width: 1600px;
+  margin-left: auto;
+  margin-right: auto;
+}
+</style>
+
+
+```{r Packages setup, include = FALSE}
+
+Packages <- c( "readxl","haven","ggplot2","dplyr","MASS","summarytools","car","lme4","lmerTest","nlme","multcomp","emmeans","ggeffects","ggiraphExtra","sjPlot","sjmisc","qwraps2","extrafont","openxlsx","igraph","gimme","purrr","ggthemes","plotly","dataxray","knitr","gmodels","tidyverse","infer","skimr","pander", "RColorBrewer","expss","ggrepel","fmsb","lubridate","mgcv","nlme","glmmTMB","lmerTest","mice","meta","forestploter","forplo","splines","gratia","tidygam")
+
+lapply(Packages, library, character.only = T)
+
+options(scipen=999)
+
+```
+
+```{r Import Data, include = FALSE}
+
+Data <- read_excel("Data.xlsx", guess_max = 70000) # Initial Data
+
+Final <- read_excel("Final.xlsx", sheet = "Loop") # Extract Dataset resulting from loop
+
+Pooled_estimate <- read_excel("Final.xlsx", sheet = "Pooled") # Calculated Directly in Excel by Simon (Could be done in R next time, but lack of time) 
+
+Final$Study <- ifelse( Final$Study == "VERSE", "LUTE-VERSE",Final$Study ) # Easiest way to have Verse after LUTE
+
+Final <- Final[order(Final$Predictor,Final$Study ),] # Easiest way to have Verse after LUTE
+
+Final$Study <- ifelse( Final$Study == "LUTE-VERSE", "VERSE",Final$Study ) # Easiest way to have Verse after LUTE
+
+Final$Patient_years <- round(Final$Patient_years,1) # Round patient-years for figures
+
+Pooled_estimate$Patient_years <- round(Pooled_estimate$Patient_years,1) # Round patient-years for figures
+
+Final$Study <- ifelse( Final$Study == "LAVOLTA_1", "LAVOLTA-1",Final$Study )
+Final$Study <- ifelse( Final$Study == "LAVOLTA_2", "LAVOLTA-2",Final$Study )
+Final$Study <- ifelse( Final$Study == "LUSTER_1", "LUSTER-1",Final$Study )
+Final$Study <- ifelse( Final$Study == "LUSTER_2", "LUSTER-2",Final$Study )
+Final$Study <- ifelse( Final$Study == "STRATOS_1", "STRATOS-1",Final$Study )
+Final$Study <- ifelse( Final$Study == "STRATOS_2", "STRATOS-2",Final$Study )
+Final$Study <- ifelse( Final$Study == "Novel_START", "Novel START",Final$Study )
+
+```
+
+# Forest plot - Studies {.tabset}
+
+## ACQ_baseline_score_mean (by 0.5 points)
+
+```{r , echo= FALSE, fig.width= 10 , fig.height=8}
+
+Sub <- Final %>%
+  filter(Final$Predictor == "ACQ_baseline_score_mean")
+
+u <- metagen(Sub$Model.estimate,lower = Sub$CI.Lower.Bound, upper = Sub$CI.Upper.Bound)
+I2 <- u$I2
+I2.low <- u$lower.I2
+I2.up <- u$upper.I2
+I2.p <- ifelse( u$pval.Q < 0.0001, "<.0001", u$pval.Q )
+
+Sub <- rbind(Sub, c("Pooled effect", "ACQ_baseline_score_mean",as.numeric(Pooled_estimate[19,c(2)]),as.numeric(Pooled_estimate[19,c(3)]),as.numeric(Pooled_estimate[19,c(4)]),NA,	as.numeric(Pooled_estimate[19,c(5)]))   )
+
+Sub$Model.estimate <- as.numeric(Sub$Model.estimate)
+Sub$CI.Lower.Bound <- as.numeric(Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- as.numeric(Sub$CI.Upper.Bound)
+Sub$Patient_years <- as.numeric(Sub$Patient_years)
+
+Sub$Group <- ifelse(Sub$Study == "Pooled effect",1,0   )
+
+weights <- Sub$Patient_years
+weights[c(nrow(Sub))] <- NA
+
+Sub$Patient_years <- ifelse(is.na(Sub$Model.estimate)== T, NA , Sub$Patient_years)
+Sub$Model.estimate <- ifelse(is.na(Sub$Model.estimate)== T, 0 , Sub$Model.estimate)
+Sub$CI.Lower.Bound <- ifelse(is.na(Sub$CI.Lower.Bound)== T, 0 , Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- ifelse(is.na(Sub$CI.Upper.Bound)== T, 0 , Sub$CI.Upper.Bound)
+
+v <- paste("Heterogeneity : I² =",round(I2,2),"[",round(I2.low,2),"-",round(I2.up,2),"]", sep=" " )
+Sub$Study <- ifelse( Sub$Study == "Pooled effect", paste("Pooled effect\n",v,sep="") , Sub$Study   )
+
+forplo(as.data.frame(Sub[,3:5]), row.labels = Sub$Study,add.columns=Sub$Patient_years,
+       add.colnames=c('Weights'),
+       scaledot.by=weights,
+       title = "ACQ-5 (per 0.5 increase)",
+       left.align=TRUE,
+       margin.right = 12,
+       margin.left = 18,
+       diamond=c(nrow(Sub)),
+       diamond.col='black',
+       groups=Sub$Group,
+       grouplabs=c('Studies',
+                   'Overall\n'),
+       em = "IRR", xlim = c(0.9,1.6)) 
+
+```
+
+## Adherence_InTrial_quantity
+
+```{r , echo= FALSE, fig.width= 10 , fig.height=8}
+
+Sub <- Final %>%
+  filter(Final$Predictor == "Adherence_InTrial_quantity")
+
+u <- metagen(Sub$Model.estimate,lower = Sub$CI.Lower.Bound, upper = Sub$CI.Upper.Bound)
+I2 <- u$I2
+I2.low <- u$lower.I2
+I2.up <- u$upper.I2
+I2.p <- ifelse( u$pval.Q < 0.0001, "<.0001", u$pval.Q )
+
+Sub <- rbind(Sub, c("Pooled effect","Adherence_InTrial_quantity",as.numeric(Pooled_estimate[16,c(2)]),as.numeric(Pooled_estimate[16,c(3)]),as.numeric(Pooled_estimate[16,c(4)]),NA,	as.numeric(Pooled_estimate[16,c(5)]))   )
+
+Sub$Model.estimate <- as.numeric(Sub$Model.estimate)
+Sub$CI.Lower.Bound <- as.numeric(Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- as.numeric(Sub$CI.Upper.Bound)
+Sub$Patient_years <- as.numeric(Sub$Patient_years)
+
+Sub$Group <- ifelse(Sub$Study == "Pooled effect",1,0   )
+
+weights <- Sub$Patient_years
+weights[c(nrow(Sub))] <- NA
+
+Sub$Patient_years <- ifelse(is.na(Sub$Model.estimate)== T, NA , Sub$Patient_years)
+Sub$Model.estimate <- ifelse(is.na(Sub$Model.estimate)== T, 0 , Sub$Model.estimate)
+Sub$CI.Lower.Bound <- ifelse(is.na(Sub$CI.Lower.Bound)== T, 0 , Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- ifelse(is.na(Sub$CI.Upper.Bound)== T, 0 , Sub$CI.Upper.Bound)
+
+v <- paste("Heterogeneity : I² =",round(I2,2),"[",round(I2.low,2),"-",round(I2.up,2),"]", sep=" " )
+Sub$Study <- ifelse( Sub$Study == "Pooled effect", paste("Pooled effect\n",v,sep="") , Sub$Study   )
+
+forplo(as.data.frame(Sub[,3:5]), row.labels = Sub$Study,add.columns=Sub$Patient_years,
+       add.colnames=c('Weights'),
+       scaledot.by=weights,
+       title = "Adherence in trial (per 10% decrease)",
+       left.align=TRUE,
+       margin.right = 12,
+       margin.left = 18,
+       diamond=c(nrow(Sub)),
+       diamond.col='black',
+       groups=Sub$Group,
+       grouplabs=c('Studies',
+                   'Overall\n'),
+       em = "IRR", xlim = c(0.7,1.7))
+
+```
+
+## Age
+
+```{r , echo= FALSE, fig.width= 10 , fig.height=8}
+
+Sub <- Final %>%
+  filter(Final$Predictor == "Age")
+
+u <- metagen(Sub$Model.estimate,lower = Sub$CI.Lower.Bound, upper = Sub$CI.Upper.Bound)
+I2 <- u$I2
+I2.low <- u$lower.I2
+I2.up <- u$upper.I2
+I2.p <- ifelse( u$pval.Q < 0.0001, "<.0001", u$pval.Q )
+
+Sub <- rbind(Sub, c("Pooled effect","Age",as.numeric(Pooled_estimate[1,c(2)]),as.numeric(Pooled_estimate[1,c(3)]),as.numeric(Pooled_estimate[1,c(4)]),NA,	as.numeric(Pooled_estimate[1,c(5)]))   )
+
+Sub$Model.estimate <- as.numeric(Sub$Model.estimate)
+Sub$CI.Lower.Bound <- as.numeric(Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- as.numeric(Sub$CI.Upper.Bound)
+Sub$Patient_years <- as.numeric(Sub$Patient_years)
+
+Sub$Group <- ifelse(Sub$Study == "Pooled effect",1,0   )
+
+weights <- Sub$Patient_years
+weights[c(nrow(Sub))] <- NA
+
+Sub$Patient_years <- ifelse(is.na(Sub$Model.estimate)== T, NA , Sub$Patient_years)
+Sub$Model.estimate <- ifelse(is.na(Sub$Model.estimate)== T, 0 , Sub$Model.estimate)
+Sub$CI.Lower.Bound <- ifelse(is.na(Sub$CI.Lower.Bound)== T, 0 , Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- ifelse(is.na(Sub$CI.Upper.Bound)== T, 0 , Sub$CI.Upper.Bound)
+
+v <- paste("Heterogeneity : I² =",round(I2,2),"[",round(I2.low,2),"-",round(I2.up,2),"]", sep=" " )
+Sub$Study <- ifelse( Sub$Study == "Pooled effect", paste("Pooled effect\n",v,sep="") , Sub$Study   )
+
+forplo(as.data.frame(Sub[,3:5]), row.labels = Sub$Study,add.columns=Sub$Patient_years,
+       add.colnames=c('Weights'),
+       scaledot.by=weights,
+       title = "Age (per 10 years)",
+       left.align=TRUE,
+       margin.right = 12,
+       margin.left = 18,
+       diamond=c(nrow(Sub)),
+       diamond.col='black',
+       groups=Sub$Group,
+       grouplabs=c('Studies',
+                   'Overall\n'),
+       em = "IRR", xlim = c(0.7,1.3))
+
+```
+
+## Airborne_allergen_sensitisation_on_testing
+
+```{r , echo= FALSE, fig.width= 10 , fig.height=8}
+
+Sub <- Final %>%
+  filter(Final$Predictor == "Airborne_allergen_sensitisation_on_testing_0no_1yes_9999notknown")
+
+u <- metagen(Sub$Model.estimate,lower = Sub$CI.Lower.Bound, upper = Sub$CI.Upper.Bound)
+I2 <- u$I2
+I2.low <- u$lower.I2
+I2.up <- u$upper.I2
+I2.p <- ifelse( u$pval.Q < 0.0001, "<.0001", u$pval.Q )
+
+Sub <- rbind(Sub, c("Pooled effect","Airborne_allergen_sensitisation_on_testing_0no_1yes_9999notknown",as.numeric(Pooled_estimate[13,c(2)]),as.numeric(Pooled_estimate[13,c(3)]),as.numeric(Pooled_estimate[13,c(4)]),NA,	as.numeric(Pooled_estimate[13,c(5)]))   )
+
+Sub$Model.estimate <- as.numeric(Sub$Model.estimate)
+Sub$CI.Lower.Bound <- as.numeric(Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- as.numeric(Sub$CI.Upper.Bound)
+Sub$Patient_years <- as.numeric(Sub$Patient_years)
+
+Sub$Group <- ifelse(Sub$Study == "Pooled effect",1,0   )
+
+weights <- Sub$Patient_years
+weights[c(nrow(Sub))] <- NA
+
+Sub$Patient_years <- ifelse(is.na(Sub$Model.estimate)== T, NA , Sub$Patient_years)
+Sub$Model.estimate <- ifelse(is.na(Sub$Model.estimate)== T, 0 , Sub$Model.estimate)
+Sub$CI.Lower.Bound <- ifelse(is.na(Sub$CI.Lower.Bound)== T, 0 , Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- ifelse(is.na(Sub$CI.Upper.Bound)== T, 0 , Sub$CI.Upper.Bound)
+
+v <- paste("Heterogeneity : I² =",round(I2,2),"[",round(I2.low,2),"-",round(I2.up,2),"]", sep=" " )
+Sub$Study <- ifelse( Sub$Study == "Pooled effect", paste("Pooled effect\n",v,sep="") , Sub$Study   )
+
+forplo(as.data.frame(Sub[,3:5]), row.labels = Sub$Study,add.columns=Sub$Patient_years,
+       add.colnames=c('Weights'),
+       scaledot.by=weights,
+       title = "Allergen sensitization",
+       left.align=TRUE,
+       margin.right = 12,
+       margin.left = 18,
+       diamond=c(nrow(Sub)),
+       diamond.col='black',
+       groups=Sub$Group,
+       grouplabs=c('Studies',
+                   'Overall\n'),
+       em = "IRR", xlim = c(0.6,2.0))
+
+```
+
+
+## Allergic Rhinitis
+
+```{r , echo= FALSE, fig.width= 10 , fig.height=8}
+
+Sub <- Final %>%
+  filter(Final$Predictor == "AllergicRhinitis__0no_1yes_9999notknown")
+
+u <- metagen(Sub$Model.estimate,lower = Sub$CI.Lower.Bound, upper = Sub$CI.Upper.Bound)
+I2 <- u$I2
+I2.low <- u$lower.I2
+I2.up <- u$upper.I2
+I2.p <- ifelse( u$pval.Q < 0.0001, "<.0001", u$pval.Q )
+
+Sub <- rbind(Sub, c("Pooled effect","AllergicRhinitis__0no_1yes_9999notknown",as.numeric(Pooled_estimate[11,c(2)]),as.numeric(Pooled_estimate[11,c(3)]),as.numeric(Pooled_estimate[11,c(4)]),NA,	as.numeric(Pooled_estimate[11,c(5)]))   )
+
+Sub$Model.estimate <- as.numeric(Sub$Model.estimate)
+Sub$CI.Lower.Bound <- as.numeric(Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- as.numeric(Sub$CI.Upper.Bound)
+Sub$Patient_years <- as.numeric(Sub$Patient_years)
+
+Sub$Group <- ifelse(Sub$Study == "Pooled effect",1,0   )
+
+weights <- Sub$Patient_years
+weights[c(nrow(Sub))] <- NA
+
+Sub$Patient_years <- ifelse(is.na(Sub$Model.estimate)== T, NA , Sub$Patient_years)
+Sub$Model.estimate <- ifelse(is.na(Sub$Model.estimate)== T, 0 , Sub$Model.estimate)
+Sub$CI.Lower.Bound <- ifelse(is.na(Sub$CI.Lower.Bound)== T, 0 , Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- ifelse(is.na(Sub$CI.Upper.Bound)== T, 0 , Sub$CI.Upper.Bound)
+
+v <- paste("Heterogeneity : I² =",round(I2,2),"[",round(I2.low,2),"-",round(I2.up,2),"]", sep=" " )
+Sub$Study <- ifelse( Sub$Study == "Pooled effect", paste("Pooled effect\n",v,sep="") , Sub$Study   )
+
+forplo(as.data.frame(Sub[,3:5]), row.labels = Sub$Study,add.columns=Sub$Patient_years,
+       add.colnames=c('Weights'),
+       scaledot.by=weights,
+       title = "Allergic Rhinitis",
+       left.align=TRUE,
+       margin.right = 12,
+       margin.left = 18,
+       diamond=c(nrow(Sub)),
+       diamond.col='black',
+       groups=Sub$Group,
+       grouplabs=c('Studies',
+                   'Overall\n'),
+       em = "IRR", xlim = c(0.4,2.8))
+
+```
+
+
+## Any_severe_attack_previous_12m
+
+```{r , echo= FALSE, fig.width= 10 , fig.height=8}
+
+Sub <- Final %>%
+  filter(Final$Predictor == "Any_severe_attack_previous_12m_0no_1yes")
+
+u <- metagen(Sub$Model.estimate,lower = Sub$CI.Lower.Bound, upper = Sub$CI.Upper.Bound)
+I2 <- u$I2
+I2.low <- u$lower.I2
+I2.up <- u$upper.I2
+I2.p <- ifelse( u$pval.Q < 0.0001, "<.0001", u$pval.Q )
+
+Sub <- rbind(Sub, c("Pooled effect","Any_severe_attack_previous_12m_0no_1yes",as.numeric(Pooled_estimate[6,c(2)]),as.numeric(Pooled_estimate[6,c(3)]),as.numeric(Pooled_estimate[6,c(4)]),NA,	as.numeric(Pooled_estimate[6,c(5)]))   )
+
+Sub$Model.estimate <- as.numeric(Sub$Model.estimate)
+Sub$CI.Lower.Bound <- as.numeric(Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- as.numeric(Sub$CI.Upper.Bound)
+Sub$Patient_years <- as.numeric(Sub$Patient_years)
+
+Sub$Group <- ifelse(Sub$Study == "Pooled effect",1,0   )
+
+weights <- Sub$Patient_years
+weights[c(nrow(Sub))] <- NA
+
+Sub$Patient_years <- ifelse(is.na(Sub$Model.estimate)== T, NA , Sub$Patient_years)
+Sub$Model.estimate <- ifelse(is.na(Sub$Model.estimate)== T, 0 , Sub$Model.estimate)
+Sub$CI.Lower.Bound <- ifelse(is.na(Sub$CI.Lower.Bound)== T, 0 , Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- ifelse(is.na(Sub$CI.Upper.Bound)== T, 0 , Sub$CI.Upper.Bound)
+
+v <- paste("Heterogeneity : I² =",round(I2,2),"[",round(I2.low,2),"-",round(I2.up,2),"]", sep=" " )
+Sub$Study <- ifelse( Sub$Study == "Pooled effect", paste("Pooled effect\n",v,sep="") , Sub$Study   )
+
+forplo(as.data.frame(Sub[,3:5]), row.labels = Sub$Study,add.columns=Sub$Patient_years,
+       add.colnames=c('Weights'),
+       scaledot.by=weights,
+       title = "Any attack past 12m",
+       left.align=TRUE,
+       margin.right = 12,
+       margin.left = 18,
+       diamond=c(nrow(Sub)),
+       diamond.col='black',
+       groups=Sub$Group,
+       grouplabs=c('Studies',
+                   'Overall\n'),
+       em = "IRR", xlim = c(0.6,4.5) )
+
+```
+
+## Atopy_history
+
+```{r , echo= FALSE, fig.width= 10 , fig.height=8}
+
+Sub <- Final %>%
+  filter(Final$Predictor == "Atopy_history_0no_1yes_9999notknown_COMPUTED")
+
+u <- metagen(Sub$Model.estimate,lower = Sub$CI.Lower.Bound, upper = Sub$CI.Upper.Bound)
+I2 <- u$I2
+I2.low <- u$lower.I2
+I2.up <- u$upper.I2
+I2.p <- ifelse( u$pval.Q < 0.0001, "<.0001", u$pval.Q )
+
+Sub <- rbind(Sub, c("Pooled effect","Atopy_history_0no_1yes_9999notknown_COMPUTED",as.numeric(Pooled_estimate[12,c(2)]),as.numeric(Pooled_estimate[12,c(3)]),as.numeric(Pooled_estimate[12,c(4)]),NA,	as.numeric(Pooled_estimate[12,c(5)]))   )
+
+Sub$Model.estimate <- as.numeric(Sub$Model.estimate)
+Sub$CI.Lower.Bound <- as.numeric(Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- as.numeric(Sub$CI.Upper.Bound)
+Sub$Patient_years <- as.numeric(Sub$Patient_years)
+
+Sub$Group <- ifelse(Sub$Study == "Pooled effect",1,0   )
+
+weights <- Sub$Patient_years
+weights[c(nrow(Sub))] <- NA
+
+Sub$Patient_years <- ifelse(is.na(Sub$Model.estimate)== T, NA , Sub$Patient_years)
+Sub$Model.estimate <- ifelse(is.na(Sub$Model.estimate)== T, 0 , Sub$Model.estimate)
+Sub$CI.Lower.Bound <- ifelse(is.na(Sub$CI.Lower.Bound)== T, 0 , Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- ifelse(is.na(Sub$CI.Upper.Bound)== T, 0 , Sub$CI.Upper.Bound)
+
+v <- paste("Heterogeneity : I² =",round(I2,2),"[",round(I2.low,2),"-",round(I2.up,2),"]", sep=" " )
+Sub$Study <- ifelse( Sub$Study == "Pooled effect", paste("Pooled effect\n",v,sep="") , Sub$Study   )
+
+forplo(as.data.frame(Sub[,3:5]), row.labels = Sub$Study,add.columns=Sub$Patient_years,
+       add.colnames=c('Weights'),
+       scaledot.by=weights,
+       title = "Atopy history",
+       left.align=TRUE,
+       margin.right = 12,
+       margin.left = 18,
+       diamond=c(nrow(Sub)),
+       diamond.col='black',
+       groups=Sub$Group,
+       grouplabs=c('Studies',
+                   'Overall\n'),
+       em = "IRR", xlim = c(0.2,2.4))
+
+```
+
+## Blood Eos baseline
+
+```{r , echo= FALSE, fig.width= 10 , fig.height=8}
+
+Sub <- Final %>%
+  filter(Final$Predictor == "Blood_Eos_baseline_x10_9_cells_per_L_zeroreplaced")
+
+u <- metagen(Sub$Model.estimate,lower = Sub$CI.Lower.Bound, upper = Sub$CI.Upper.Bound)
+I2 <- u$I2
+I2.low <- u$lower.I2
+I2.up <- u$upper.I2
+I2.p <- ifelse( u$pval.Q < 0.0001, "<.0001", u$pval.Q )
+
+Sub <- rbind(Sub, c("Pooled effect","Blood_Eos_baseline_x10_9_cells_per_L_zeroreplaced",as.numeric(Pooled_estimate[20,c(2)]),as.numeric(Pooled_estimate[20,c(3)]),as.numeric(Pooled_estimate[20,c(4)]),NA,	as.numeric(Pooled_estimate[20,c(5)]))   )
+
+Sub$Model.estimate <- as.numeric(Sub$Model.estimate)
+Sub$CI.Lower.Bound <- as.numeric(Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- as.numeric(Sub$CI.Upper.Bound)
+Sub$Patient_years <- as.numeric(Sub$Patient_years)
+
+Sub$Group <- ifelse(Sub$Study == "Pooled effect",1,0   )
+
+weights <- Sub$Patient_years
+weights[c(nrow(Sub))] <- NA
+
+Sub$Patient_years <- ifelse(is.na(Sub$Model.estimate)== T, NA , Sub$Patient_years)
+Sub$Model.estimate <- ifelse(is.na(Sub$Model.estimate)== T, 0 , Sub$Model.estimate)
+Sub$CI.Lower.Bound <- ifelse(is.na(Sub$CI.Lower.Bound)== T, 0 , Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- ifelse(is.na(Sub$CI.Upper.Bound)== T, 0 , Sub$CI.Upper.Bound)
+
+v <- paste("Heterogeneity : I² =",round(I2,2),"[",round(I2.low,2),"-",round(I2.up,2),"]", sep=" " )
+Sub$Study <- ifelse( Sub$Study == "Pooled effect", paste("Pooled effect\n",v,sep="") , Sub$Study   )
+
+forplo(as.data.frame(Sub[,3:5]), row.labels = Sub$Study,add.columns=Sub$Patient_years,
+       add.colnames=c('Weights'),
+       scaledot.by=weights,
+       title = "log10(BEC)",
+       left.align=TRUE,
+       margin.right = 12,
+       margin.left = 18,
+       diamond=c(nrow(Sub)),
+       diamond.col='black',
+       groups=Sub$Group,
+       grouplabs=c('Studies',
+                   'Overall\n'),
+       em = "IRR")
+
+```
+
+## BMI
+
+```{r , echo= FALSE, fig.width= 10 , fig.height=8}
+
+Sub <- Final %>%
+  filter(Final$Predictor == "BMI")
+
+u <- metagen(Sub$Model.estimate,lower = Sub$CI.Lower.Bound, upper = Sub$CI.Upper.Bound)
+I2 <- u$I2
+I2.low <- u$lower.I2
+I2.up <- u$upper.I2
+I2.p <- ifelse( u$pval.Q < 0.0001, "<.0001", u$pval.Q )
+
+Sub <- rbind(Sub, c("Pooled effect","BMI",as.numeric(Pooled_estimate[3,c(2)]),as.numeric(Pooled_estimate[3,c(3)]),as.numeric(Pooled_estimate[3,c(4)]),NA,	as.numeric(Pooled_estimate[3,c(5)]))   )
+
+Sub$Model.estimate <- as.numeric(Sub$Model.estimate)
+Sub$CI.Lower.Bound <- as.numeric(Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- as.numeric(Sub$CI.Upper.Bound)
+Sub$Patient_years <- as.numeric(Sub$Patient_years)
+
+Sub$Group <- ifelse(Sub$Study == "Pooled effect",1,0   )
+
+weights <- Sub$Patient_years
+weights[c(nrow(Sub))] <- NA
+
+Sub$Patient_years <- ifelse(is.na(Sub$Model.estimate)== T, NA , Sub$Patient_years)
+Sub$Model.estimate <- ifelse(is.na(Sub$Model.estimate)== T, 0 , Sub$Model.estimate)
+Sub$CI.Lower.Bound <- ifelse(is.na(Sub$CI.Lower.Bound)== T, 0 , Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- ifelse(is.na(Sub$CI.Upper.Bound)== T, 0 , Sub$CI.Upper.Bound)
+
+v <- paste("Heterogeneity : I² =",round(I2,2),"[",round(I2.low,2),"-",round(I2.up,2),"]", sep=" " )
+Sub$Study <- ifelse( Sub$Study == "Pooled effect", paste("Pooled effect\n",v,sep="") , Sub$Study   )
+
+forplo(as.data.frame(Sub[,3:5]), row.labels = Sub$Study,add.columns=Sub$Patient_years,
+       add.colnames=c('Weights'),
+       scaledot.by=weights,
+       title = "BMI (per kg/m^2)",
+       left.align=TRUE,
+       margin.right = 12,
+       margin.left = 18,
+       diamond=c(nrow(Sub)),
+       diamond.col='black',
+       groups=Sub$Group,
+       grouplabs=c('Studies',
+                   'Overall\n'),
+       em = "IRR", xlim = c(0.9,1.1))
+
+```
+
+## Chronic_Rhinosinusitis
+
+```{r , echo= FALSE, fig.width= 10 , fig.height=8}
+
+Sub <- Final %>%
+  filter(Final$Predictor == "Chronic_Rhinosinusitis_0no_1yes_9999notknown")
+
+u <- metagen(Sub$Model.estimate,lower = Sub$CI.Lower.Bound, upper = Sub$CI.Upper.Bound)
+I2 <- u$I2
+I2.low <- u$lower.I2
+I2.up <- u$upper.I2
+I2.p <- ifelse( u$pval.Q < 0.0001, "<.0001", u$pval.Q )
+
+Sub <- rbind(Sub, c("Pooled effect","Chronic_Rhinosinusitis_0no_1yes_9999notknown",as.numeric(Pooled_estimate[14,c(2)]),as.numeric(Pooled_estimate[14,c(3)]),as.numeric(Pooled_estimate[14,c(4)]),NA,	as.numeric(Pooled_estimate[14,c(5)]))   )
+
+Sub$Model.estimate <- as.numeric(Sub$Model.estimate)
+Sub$CI.Lower.Bound <- as.numeric(Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- as.numeric(Sub$CI.Upper.Bound)
+Sub$Patient_years <- as.numeric(Sub$Patient_years)
+
+Sub$Group <- ifelse(Sub$Study == "Pooled effect",1,0   )
+
+weights <- Sub$Patient_years
+weights[c(nrow(Sub))] <- NA
+
+Sub$Patient_years <- ifelse(is.na(Sub$Model.estimate)== T, NA , Sub$Patient_years)
+Sub$Model.estimate <- ifelse(is.na(Sub$Model.estimate)== T, 0 , Sub$Model.estimate)
+Sub$CI.Lower.Bound <- ifelse(is.na(Sub$CI.Lower.Bound)== T, 0 , Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- ifelse(is.na(Sub$CI.Upper.Bound)== T, 0 , Sub$CI.Upper.Bound)
+
+v <- paste("Heterogeneity : I² =",round(I2,2),"[",round(I2.low,2),"-",round(I2.up,2),"]", sep=" " )
+Sub$Study <- ifelse( Sub$Study == "Pooled effect", paste("Pooled effect\n",v,sep="") , Sub$Study   )
+
+forplo(as.data.frame(Sub[,3:5]), row.labels = Sub$Study,add.columns=Sub$Patient_years,
+       add.colnames=c('Weights'),
+       scaledot.by=weights,
+       title = "Chronic Rhinosinusitis",
+       left.align=TRUE,
+       margin.right = 12,
+       margin.left = 18,
+       diamond=c(nrow(Sub)),
+       diamond.col='black',
+       groups=Sub$Group,
+       grouplabs=c('Studies',
+                   'Overall\n'),
+       em = "IRR", xlim = c(0.6,6.0))
+
+```
+
+
+## FeNO_baseline_ppb
+
+```{r , echo= FALSE, fig.width= 10 , fig.height=8}
+
+Sub <- Final %>%
+  filter(Final$Predictor == "FeNO_baseline_ppb")
+
+u <- metagen(Sub$Model.estimate,lower = Sub$CI.Lower.Bound, upper = Sub$CI.Upper.Bound)
+I2 <- u$I2
+I2.low <- u$lower.I2
+I2.up <- u$upper.I2
+I2.p <- ifelse( u$pval.Q < 0.0001, "<.0001", u$pval.Q )
+
+Sub <- rbind(Sub, c("Pooled effect","FeNO_baseline_ppb",as.numeric(Pooled_estimate[21,c(2)]),as.numeric(Pooled_estimate[21,c(3)]),as.numeric(Pooled_estimate[21,c(4)]),NA,	as.numeric(Pooled_estimate[21,c(5)]))   )
+
+Sub$Model.estimate <- as.numeric(Sub$Model.estimate)
+Sub$CI.Lower.Bound <- as.numeric(Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- as.numeric(Sub$CI.Upper.Bound)
+Sub$Patient_years <- as.numeric(Sub$Patient_years)
+
+Sub$Group <- ifelse(Sub$Study == "Pooled effect",1,0   )
+
+weights <- Sub$Patient_years
+weights[c(nrow(Sub))] <- NA
+
+Sub$Patient_years <- ifelse(is.na(Sub$Model.estimate)== T, NA , Sub$Patient_years)
+Sub$Model.estimate <- ifelse(is.na(Sub$Model.estimate)== T, 0 , Sub$Model.estimate)
+Sub$CI.Lower.Bound <- ifelse(is.na(Sub$CI.Lower.Bound)== T, 0 , Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- ifelse(is.na(Sub$CI.Upper.Bound)== T, 0 , Sub$CI.Upper.Bound)
+
+v <- paste("Heterogeneity : I² =",round(I2,2),"[",round(I2.low,2),"-",round(I2.up,2),"]", sep=" " )
+Sub$Study <- ifelse( Sub$Study == "Pooled effect", paste("Pooled effect\n",v,sep="") , Sub$Study   )
+
+forplo(as.data.frame(Sub[,3:5]), row.labels = Sub$Study,add.columns=Sub$Patient_years,
+       add.colnames=c('Weights'),
+       scaledot.by=weights,
+       title = "log10(FeNO)",
+       left.align=TRUE,
+       margin.right = 12,
+       margin.left = 18,
+       diamond=c(nrow(Sub)),
+       diamond.col='black',
+       groups=Sub$Group,
+       grouplabs=c('Studies',
+                   'Overall\n'),
+       em = "IRR")
+
+```
+
+
+## FEV1_mix_PCT_Baseline (10% decreased)
+
+```{r , echo= FALSE, fig.width= 10 , fig.height=8}
+
+Sub <- Final %>%
+  filter(Final$Predictor == "FEV1_mix_PCT_Baseline")
+
+u <- metagen(Sub$Model.estimate,lower = Sub$CI.Lower.Bound, upper = Sub$CI.Upper.Bound)
+I2 <- u$I2
+I2.low <- u$lower.I2
+I2.up <- u$upper.I2
+I2.p <- ifelse( u$pval.Q < 0.0001, "<.0001", u$pval.Q )
+
+Sub <- rbind(Sub, c("Pooled effect","FEV1_mix_PCT_Baseline",as.numeric(Pooled_estimate[23,c(2)]),as.numeric(Pooled_estimate[23,c(3)]),as.numeric(Pooled_estimate[23,c(4)]),NA,	as.numeric(Pooled_estimate[23,c(5)]))   )
+
+Sub$Model.estimate <- as.numeric(Sub$Model.estimate)
+Sub$CI.Lower.Bound <- as.numeric(Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- as.numeric(Sub$CI.Upper.Bound)
+Sub$Patient_years <- as.numeric(Sub$Patient_years)
+
+Sub$Group <- ifelse(Sub$Study == "Pooled effect",1,0   )
+
+weights <- Sub$Patient_years
+weights[c(nrow(Sub))] <- NA
+
+Sub$Patient_years <- ifelse(is.na(Sub$Model.estimate)== T, NA , Sub$Patient_years)
+Sub$Model.estimate <- ifelse(is.na(Sub$Model.estimate)== T, 0 , Sub$Model.estimate)
+Sub$CI.Lower.Bound <- ifelse(is.na(Sub$CI.Lower.Bound)== T, 0 , Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- ifelse(is.na(Sub$CI.Upper.Bound)== T, 0 , Sub$CI.Upper.Bound)
+
+v <- paste("Heterogeneity : I² =",round(I2,2),"[",round(I2.low,2),"-",round(I2.up,2),"]", sep=" " )
+Sub$Study <- ifelse( Sub$Study == "Pooled effect", paste("Pooled effect\n",v,sep="") , Sub$Study   )
+
+forplo(as.data.frame(Sub[,3:5]), row.labels = Sub$Study,add.columns=Sub$Patient_years,
+       add.colnames=c('Weights'),
+       scaledot.by=weights,
+       title = "FEV1% preBD or else postBD (per 10% decrease)",
+       left.align=TRUE,
+       margin.right = 12,
+       margin.left = 18,
+       diamond=c(nrow(Sub)),
+       diamond.col='black',
+       groups=Sub$Group,
+       grouplabs=c('Studies',
+                   'Overall\n'),
+       em = "IRR")
+
+```
+
+## FEV1_PCT_reversibility_postBD  (10% increased)
+
+```{r , echo= FALSE, fig.width= 10 , fig.height=8}
+
+Sub <- Final %>%
+  filter(Final$Predictor == "FEV1_PCT_reversibility_postBD")
+
+u <- metagen(Sub$Model.estimate,lower = Sub$CI.Lower.Bound, upper = Sub$CI.Upper.Bound)
+I2 <- u$I2
+I2.low <- u$lower.I2
+I2.up <- u$upper.I2
+I2.p <- ifelse( u$pval.Q < 0.0001, "<.0001", u$pval.Q )
+
+Sub <- rbind(Sub, c("Pooled effect","FEV1_PCT_reversibility_postBD",as.numeric(Pooled_estimate[18,c(2)]),as.numeric(Pooled_estimate[18,c(3)]),as.numeric(Pooled_estimate[18,c(4)]),NA,	as.numeric(Pooled_estimate[18,c(5)]))   )
+
+Sub$Model.estimate <- as.numeric(Sub$Model.estimate)
+Sub$CI.Lower.Bound <- as.numeric(Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- as.numeric(Sub$CI.Upper.Bound)
+Sub$Patient_years <- as.numeric(Sub$Patient_years)
+
+Sub$Group <- ifelse(Sub$Study == "Pooled effect",1,0   )
+
+weights <- Sub$Patient_years
+weights[c(nrow(Sub))] <- NA
+
+Sub$Patient_years <- ifelse(is.na(Sub$Model.estimate)== T, NA , Sub$Patient_years)
+Sub$Model.estimate <- ifelse(is.na(Sub$Model.estimate)== T, 0 , Sub$Model.estimate)
+Sub$CI.Lower.Bound <- ifelse(is.na(Sub$CI.Lower.Bound)== T, 0 , Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- ifelse(is.na(Sub$CI.Upper.Bound)== T, 0 , Sub$CI.Upper.Bound)
+
+v <- paste("Heterogeneity : I² =",round(I2,2),"[",round(I2.low,2),"-",round(I2.up,2),"]", sep=" " )
+Sub$Study <- ifelse( Sub$Study == "Pooled effect", paste("Pooled effect\n",v,sep="") , Sub$Study   )
+
+forplo(as.data.frame(Sub[,3:5]), row.labels = Sub$Study,add.columns=Sub$Patient_years,
+       add.colnames=c('Weights'),
+       scaledot.by=weights,
+       title = "FEV1% Reversibility (per 10%)",
+       left.align=TRUE,
+       margin.right = 12,
+       margin.left = 18,
+       diamond=c(nrow(Sub)),
+       diamond.col='black',
+       groups=Sub$Group,
+       grouplabs=c('Studies',
+                   'Overall\n'),
+       em = "IRR", xlim = c(0.8,1.2))
+
+```
+
+## FEV1_preBD_PCT_Baseline (10% decreased)
+
+```{r , echo= FALSE, fig.width= 10 , fig.height=8}
+
+Sub <- Final %>%
+  filter(Final$Predictor == "FEV1_preBD_PCT_Baseline")
+
+u <- metagen(Sub$Model.estimate,lower = Sub$CI.Lower.Bound, upper = Sub$CI.Upper.Bound)
+I2 <- u$I2
+I2.low <- u$lower.I2
+I2.up <- u$upper.I2
+I2.p <- ifelse( u$pval.Q < 0.0001, "<.0001", u$pval.Q )
+
+Sub <- rbind(Sub, c("Pooled effect","FEV1_preBD_PCT_Baseline",as.numeric(Pooled_estimate[17,c(2)]),as.numeric(Pooled_estimate[17,c(3)]),as.numeric(Pooled_estimate[17,c(4)]),NA,	as.numeric(Pooled_estimate[17,c(5)]))   )
+
+Sub$Model.estimate <- as.numeric(Sub$Model.estimate)
+Sub$CI.Lower.Bound <- as.numeric(Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- as.numeric(Sub$CI.Upper.Bound)
+Sub$Patient_years <- as.numeric(Sub$Patient_years)
+
+Sub$Group <- ifelse(Sub$Study == "Pooled effect",1,0   )
+
+weights <- Sub$Patient_years
+weights[c(nrow(Sub))] <- NA
+
+Sub$Patient_years <- ifelse(is.na(Sub$Model.estimate)== T, NA , Sub$Patient_years)
+Sub$Model.estimate <- ifelse(is.na(Sub$Model.estimate)== T, 0 , Sub$Model.estimate)
+Sub$CI.Lower.Bound <- ifelse(is.na(Sub$CI.Lower.Bound)== T, 0 , Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- ifelse(is.na(Sub$CI.Upper.Bound)== T, 0 , Sub$CI.Upper.Bound)
+
+v <- paste("Heterogeneity : I² =",round(I2,2),"[",round(I2.low,2),"-",round(I2.up,2),"]", sep=" " )
+Sub$Study <- ifelse( Sub$Study == "Pooled effect", paste("Pooled effect\n",v,sep="") , Sub$Study   )
+
+forplo(as.data.frame(Sub[,3:5]), row.labels = Sub$Study,add.columns=Sub$Patient_years,
+       add.colnames=c('Weights'),
+       scaledot.by=weights,
+       title = "FEV1% preBD (per 10% decrease)",
+       left.align=TRUE,
+       margin.right = 12,
+       margin.left = 18,
+       diamond=c(nrow(Sub)),
+       diamond.col='black',
+       groups=Sub$Group,
+       grouplabs=c('Studies',
+                   'Overall\n'),
+       em = "IRR", xlim = c(0.8,2.0))
+
+```
+
+## Gender
+
+```{r , echo= FALSE, fig.width= 10 , fig.height=8}
+
+Sub <- Final %>%
+  filter(Final$Predictor == "Gender_0Female_1Male")
+
+u <- metagen(Sub$Model.estimate,lower = Sub$CI.Lower.Bound, upper = Sub$CI.Upper.Bound)
+I2 <- u$I2
+I2.low <- u$lower.I2
+I2.up <- u$upper.I2
+I2.p <- ifelse( u$pval.Q < 0.0001, "<.0001", u$pval.Q )
+
+Sub <- rbind(Sub, c("Pooled effect","Gender_0Female_1Male",as.numeric(Pooled_estimate[2,c(2)]),as.numeric(Pooled_estimate[2,c(3)]),as.numeric(Pooled_estimate[2,c(4)]),NA,	as.numeric(Pooled_estimate[2,c(5)]))   )
+
+Sub$Model.estimate <- as.numeric(Sub$Model.estimate)
+Sub$CI.Lower.Bound <- as.numeric(Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- as.numeric(Sub$CI.Upper.Bound)
+Sub$Patient_years <- as.numeric(Sub$Patient_years)
+
+Sub$Group <- ifelse(Sub$Study == "Pooled effect",1,0   )
+
+weights <- Sub$Patient_years
+weights[c(nrow(Sub))] <- NA
+
+Sub$Patient_years <- ifelse(is.na(Sub$Model.estimate)== T, NA , Sub$Patient_years)
+Sub$Model.estimate <- ifelse(is.na(Sub$Model.estimate)== T, 0 , Sub$Model.estimate)
+Sub$CI.Lower.Bound <- ifelse(is.na(Sub$CI.Lower.Bound)== T, 0 , Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- ifelse(is.na(Sub$CI.Upper.Bound)== T, 0 , Sub$CI.Upper.Bound)
+
+v <- paste("Heterogeneity : I² =",round(I2,2),"[",round(I2.low,2),"-",round(I2.up,2),"]", sep=" " )
+Sub$Study <- ifelse( Sub$Study == "Pooled effect", paste("Pooled effect\n",v,sep="") , Sub$Study   )
+
+forplo(as.data.frame(Sub[,3:5]), row.labels = Sub$Study,add.columns=Sub$Patient_years,
+       add.colnames=c('Weights'),
+       scaledot.by=weights,
+       title = "Sex (Female)",
+       left.align=TRUE,
+       margin.right = 12,
+       margin.left = 18,
+       diamond=c(nrow(Sub)),
+       diamond.col='black',
+       groups=Sub$Group,
+       grouplabs=c('Studies',
+                   'Overall\n'),
+       em = "IRR")
+
+```
+
+
+## Nasal_polyposis
+
+```{r , echo= FALSE, fig.width= 10 , fig.height=8}
+
+Sub <- Final %>%
+  filter(Final$Predictor == "Nasal_polyposis_0no_1yes_9999notknown")
+
+u <- metagen(Sub$Model.estimate,lower = Sub$CI.Lower.Bound, upper = Sub$CI.Upper.Bound)
+I2 <- u$I2
+I2.low <- u$lower.I2
+I2.up <- u$upper.I2
+I2.p <- ifelse( u$pval.Q < 0.0001, "<.0001", u$pval.Q )
+
+Sub <- rbind(Sub, c("Pooled effect","Nasal_polyposis_0no_1yes_9999notknown",as.numeric(Pooled_estimate[15,c(2)]),as.numeric(Pooled_estimate[15,c(3)]),as.numeric(Pooled_estimate[15,c(4)]),NA,	as.numeric(Pooled_estimate[15,c(5)]))   )
+
+Sub$Model.estimate <- as.numeric(Sub$Model.estimate)
+Sub$CI.Lower.Bound <- as.numeric(Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- as.numeric(Sub$CI.Upper.Bound)
+Sub$Patient_years <- as.numeric(Sub$Patient_years)
+
+Sub$Group <- ifelse(Sub$Study == "Pooled effect",1,0)
+
+weights <- Sub$Patient_years
+weights[c(nrow(Sub))] <- NA
+
+Sub$Patient_years <- ifelse(is.na(Sub$Model.estimate)== T, NA , Sub$Patient_years)
+Sub$Model.estimate <- ifelse(is.na(Sub$Model.estimate)== T, 0 , Sub$Model.estimate)
+Sub$CI.Lower.Bound <- ifelse(is.na(Sub$CI.Lower.Bound)== T, 0 , Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- ifelse(is.na(Sub$CI.Upper.Bound)== T, 0 , Sub$CI.Upper.Bound)
+
+v <- paste("Heterogeneity : I² =",round(I2,2),"[",round(I2.low,2),"-",round(I2.up,2),"]", sep=" " )
+Sub$Study <- ifelse( Sub$Study == "Pooled effect", paste("Pooled effect\n",v,sep="") , Sub$Study   )
+
+forplo(as.data.frame(Sub[,3:5]), row.labels = Sub$Study,add.columns=Sub$Patient_years,
+       add.colnames=c('Weights'),
+       scaledot.by=weights,
+       title = "Nasal polyposis",
+       left.align=TRUE,
+       margin.right = 12,
+       margin.left = 18,
+       diamond=c(nrow(Sub)),
+       diamond.col='black',
+       groups=Sub$Group,
+       grouplabs=c('Studies',
+                   'Overall\n'),
+       em = "IRR", xlim = c(0.6,4.0))
+
+```
+
+## Number_hospitalisations_for_asthma_previous_12_months_con
+
+```{r , echo= FALSE, fig.width= 10 , fig.height=8}
+
+Sub <- Final %>%
+  filter(Final$Predictor == "Number_hospitalisations_for_asthma_previous_12_months_con")
+
+u <- metagen(Sub$Model.estimate,lower = Sub$CI.Lower.Bound, upper = Sub$CI.Upper.Bound)
+I2 <- u$I2
+I2.low <- u$lower.I2
+I2.up <- u$upper.I2
+I2.p <- ifelse( u$pval.Q < 0.0001, "<.0001", u$pval.Q )
+
+Sub <- rbind(Sub, c("Pooled effect","Number_hospitalisations_for_asthma_previous_12_months_con",as.numeric(Pooled_estimate[8,c(2)]),as.numeric(Pooled_estimate[8,c(3)]),as.numeric(Pooled_estimate[8,c(4)]),NA,	as.numeric(Pooled_estimate[8,c(5)]))   )
+
+Sub$Model.estimate <- as.numeric(Sub$Model.estimate)
+Sub$CI.Lower.Bound <- as.numeric(Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- as.numeric(Sub$CI.Upper.Bound)
+Sub$Patient_years <- as.numeric(Sub$Patient_years)
+
+Sub$Group <- ifelse(Sub$Study == "Pooled effect",1,0   )
+
+weights <- Sub$Patient_years
+weights[c(nrow(Sub))] <- NA
+
+Sub$Patient_years <- ifelse(is.na(Sub$Model.estimate)== T, NA , Sub$Patient_years)
+Sub$Model.estimate <- ifelse(is.na(Sub$Model.estimate)== T, 0 , Sub$Model.estimate)
+Sub$CI.Lower.Bound <- ifelse(is.na(Sub$CI.Lower.Bound)== T, 0 , Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- ifelse(is.na(Sub$CI.Upper.Bound)== T, 0 , Sub$CI.Upper.Bound)
+
+v <- paste("Heterogeneity : I² =",round(I2,2),"[",round(I2.low,2),"-",round(I2.up,2),"]", sep=" " )
+Sub$Study <- ifelse( Sub$Study == "Pooled effect", paste("Pooled effect\n",v,sep="") , Sub$Study   )
+
+forplo(as.data.frame(Sub[,3:5]), row.labels = Sub$Study,add.columns=Sub$Patient_years,
+       add.colnames=c('Weights'),
+       scaledot.by=weights,
+       title = "Number prev hospitalisations",
+       left.align=TRUE,
+       margin.right = 12,
+       margin.left = 18,
+       diamond=c(nrow(Sub)),
+       diamond.col='black',
+       groups=Sub$Group,
+       grouplabs=c('Studies',
+                   'Overall\n'),
+       em = "IRR", xlim = c(0.8,5.0))
+
+```
+
+## Number_severe_attack_previous_12m_con
+
+```{r , echo= FALSE, fig.width= 10 , fig.height=8}
+
+Sub <- Final %>%
+  filter(Final$Predictor == "Number_severe_attack_previous_12m_con")
+
+u <- metagen(Sub$Model.estimate,lower = Sub$CI.Lower.Bound, upper = Sub$CI.Upper.Bound)
+I2 <- u$I2
+I2.low <- u$lower.I2
+I2.up <- u$upper.I2
+I2.p <- ifelse( u$pval.Q < 0.0001, "<.0001", u$pval.Q )
+
+Sub <- rbind(Sub, c("Pooled effect","Number_severe_attack_previous_12m_con",as.numeric(Pooled_estimate[7,c(2)]),as.numeric(Pooled_estimate[7,c(3)]),as.numeric(Pooled_estimate[7,c(4)]),NA,	as.numeric(Pooled_estimate[7,c(5)]))   )
+
+Sub$Model.estimate <- as.numeric(Sub$Model.estimate)
+Sub$CI.Lower.Bound <- as.numeric(Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- as.numeric(Sub$CI.Upper.Bound)
+Sub$Patient_years <- as.numeric(Sub$Patient_years)
+
+Sub$Group <- ifelse(Sub$Study == "Pooled effect",1,0   )
+
+weights <- Sub$Patient_years
+weights[c(nrow(Sub))] <- NA
+
+Sub$Patient_years <- ifelse(is.na(Sub$Model.estimate)== T, NA , Sub$Patient_years)
+Sub$Model.estimate <- ifelse(is.na(Sub$Model.estimate)== T, 0 , Sub$Model.estimate)
+Sub$CI.Lower.Bound <- ifelse(is.na(Sub$CI.Lower.Bound)== T, 0 , Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- ifelse(is.na(Sub$CI.Upper.Bound)== T, 0 , Sub$CI.Upper.Bound)
+
+v <- paste("Heterogeneity : I² =",round(I2,2),"[",round(I2.low,2),"-",round(I2.up,2),"]", sep=" " )
+Sub$Study <- ifelse( Sub$Study == "Pooled effect", paste("Pooled effect\n",v,sep="") , Sub$Study   )
+
+forplo(as.data.frame(Sub[,3:5]), row.labels = Sub$Study,add.columns=Sub$Patient_years,
+       add.colnames=c('Weights'),
+       scaledot.by=weights,
+       title = "Number prev attacks",
+       left.align=TRUE,
+       margin.right = 12,
+       margin.left = 18,
+       diamond=c(nrow(Sub)),
+       diamond.col='black',
+       groups=Sub$Group,
+       grouplabs=c('Studies',
+                   'Overall\n'),
+       em = "IRR", xlim = c(0.4,2.4))
+
+```
+
+## Smoking_cat
+
+```{r , echo= FALSE, fig.width= 10 , fig.height=8}
+
+Sub <- Final %>%
+  filter(Final$Predictor == "Smoking_cat")
+
+u <- metagen(Sub$Model.estimate,lower = Sub$CI.Lower.Bound, upper = Sub$CI.Upper.Bound)
+I2 <- u$I2
+I2.low <- u$lower.I2
+I2.up <- u$upper.I2
+I2.p <- ifelse( u$pval.Q < 0.0001, "<.0001", u$pval.Q )
+
+Sub <- rbind(Sub, c("Pooled effect","Smoking_cat",as.numeric(Pooled_estimate[9,c(2)]),as.numeric(Pooled_estimate[9,c(3)]),as.numeric(Pooled_estimate[9,c(4)]),NA,	as.numeric(Pooled_estimate[9,c(5)]))   )
+
+Sub$Model.estimate <- as.numeric(Sub$Model.estimate)
+Sub$CI.Lower.Bound <- as.numeric(Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- as.numeric(Sub$CI.Upper.Bound)
+Sub$Patient_years <- as.numeric(Sub$Patient_years)
+
+Sub$Group <- ifelse(Sub$Study == "Pooled effect",1,0   )
+
+weights <- Sub$Patient_years
+weights[c(nrow(Sub))] <- NA
+
+Sub$Patient_years <- ifelse(is.na(Sub$Model.estimate)== T, NA , Sub$Patient_years)
+Sub$Model.estimate <- ifelse(is.na(Sub$Model.estimate)== T, 0 , Sub$Model.estimate)
+Sub$CI.Lower.Bound <- ifelse(is.na(Sub$CI.Lower.Bound)== T, 0 , Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- ifelse(is.na(Sub$CI.Upper.Bound)== T, 0 , Sub$CI.Upper.Bound)
+
+v <- paste("Heterogeneity : I² =",round(I2,2),"[",round(I2.low,2),"-",round(I2.up,2),"]", sep=" " )
+Sub$Study <- ifelse( Sub$Study == "Pooled effect", paste("Pooled effect\n",v,sep="") , Sub$Study   )
+
+forplo(as.data.frame(Sub[,3:5]), row.labels = Sub$Study,add.columns=Sub$Patient_years,
+       add.colnames=c('Weights'),
+       scaledot.by=weights,
+       title = "Smoking (ex or current vs. non)",
+       left.align=TRUE,
+       margin.right = 12,
+       margin.left = 18,
+       diamond=c(nrow(Sub)),
+       diamond.col='black',
+       groups=Sub$Group,
+       grouplabs=c('Studies',
+                   'Overall\n'),
+       em = "IRR", xlim = c(0.2,2.0))
+
+```
+
+## Total_IgE
+
+```{r , echo= FALSE, fig.width= 10 , fig.height=8}
+
+Sub <- Final %>%
+  filter(Final$Predictor == "Total_IgE")
+
+u <- metagen(Sub$Model.estimate,lower = Sub$CI.Lower.Bound, upper = Sub$CI.Upper.Bound)
+I2 <- u$I2
+I2.low <- u$lower.I2
+I2.up <- u$upper.I2
+I2.p <- ifelse( u$pval.Q < 0.0001, "<.0001", u$pval.Q )
+
+Sub <- rbind(Sub, c("Pooled effect","Total_IgE",as.numeric(Pooled_estimate[22,c(2)]),as.numeric(Pooled_estimate[22,c(3)]),as.numeric(Pooled_estimate[22,c(4)]),NA,	as.numeric(Pooled_estimate[22,c(5)]))   )
+
+Sub$Model.estimate <- as.numeric(Sub$Model.estimate)
+Sub$CI.Lower.Bound <- as.numeric(Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- as.numeric(Sub$CI.Upper.Bound)
+Sub$Patient_years <- as.numeric(Sub$Patient_years)
+
+Sub$Group <- ifelse(Sub$Study == "Pooled effect",1,0   )
+
+weights <- Sub$Patient_years
+weights[c(nrow(Sub))] <- NA
+
+Sub$Patient_years <- ifelse(is.na(Sub$Model.estimate)== T, NA , Sub$Patient_years)
+Sub$Model.estimate <- ifelse(is.na(Sub$Model.estimate)== T, 0 , Sub$Model.estimate)
+Sub$CI.Lower.Bound <- ifelse(is.na(Sub$CI.Lower.Bound)== T, 0 , Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- ifelse(is.na(Sub$CI.Upper.Bound)== T, 0 , Sub$CI.Upper.Bound)
+
+v <- paste("Heterogeneity : I² =",round(I2,2),"[",round(I2.low,2),"-",round(I2.up,2),"]", sep=" " )
+Sub$Study <- ifelse( Sub$Study == "Pooled effect", paste("Pooled effect\n",v,sep="") , Sub$Study   )
+
+forplo(as.data.frame(Sub[,3:5]), row.labels = Sub$Study,add.columns=Sub$Patient_years,
+       add.colnames=c('Weights'),
+       scaledot.by=weights,
+       title = "log10(IgE)",
+       left.align=TRUE,
+       margin.right = 12,
+       margin.left = 18,
+       diamond=c(nrow(Sub)),
+       diamond.col='black',
+       groups=Sub$Group,
+       grouplabs=c('Studies',
+                   'Overall\n'),
+       em = "IRR", xlim = c(0.6,2.0))
+
+```
+
+
+## Treatment step 4-3
+
+```{r , echo= FALSE, fig.width= 10 , fig.height=8}
+
+Sub <- Final %>%
+  filter(Final$Predictor == "Treatment_step_4_3")
+
+u <- metagen(Sub$Model.estimate,lower = Sub$CI.Lower.Bound, upper = Sub$CI.Upper.Bound)
+I2 <- u$I2
+I2.low <- u$lower.I2
+I2.up <- u$upper.I2
+I2.p <- ifelse( u$pval.Q < 0.0001, "<.0001", u$pval.Q )
+
+Sub <- rbind(Sub, c("Pooled effect","Treatment_step_4_3",as.numeric(Pooled_estimate[4,c(2)]),as.numeric(Pooled_estimate[4,c(3)]),as.numeric(Pooled_estimate[4,c(4)]),NA,	as.numeric(Pooled_estimate[4,c(5)]))   )
+
+Sub$Model.estimate <- as.numeric(Sub$Model.estimate)
+Sub$CI.Lower.Bound <- as.numeric(Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- as.numeric(Sub$CI.Upper.Bound)
+Sub$Patient_years <- as.numeric(Sub$Patient_years)
+
+Sub$Group <- ifelse(Sub$Study == "Pooled effect",1,0   )
+
+weights <- Sub$Patient_years
+weights[c(nrow(Sub))] <- NA
+
+Sub$Patient_years <- ifelse(is.na(Sub$Model.estimate)== T, NA , Sub$Patient_years)
+Sub$Model.estimate <- ifelse(is.na(Sub$Model.estimate)== T, 0 , Sub$Model.estimate)
+Sub$CI.Lower.Bound <- ifelse(is.na(Sub$CI.Lower.Bound)== T, 0 , Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- ifelse(is.na(Sub$CI.Upper.Bound)== T, 0 , Sub$CI.Upper.Bound)
+
+v <- paste("Heterogeneity : I² =",round(I2,2),"[",round(I2.low,2),"-",round(I2.up,2),"]", sep=" " )
+Sub$Study <- ifelse( Sub$Study == "Pooled effect", paste("Pooled effect\n",v,sep="") , Sub$Study   )
+
+forplo(as.data.frame(Sub[,3:5]), row.labels = Sub$Study,add.columns=Sub$Patient_years,
+       add.colnames=c('Weights'),
+       scaledot.by=weights,
+       title = "Treatment step (4 vs. 3)",
+       left.align=TRUE,
+       margin.right = 12,
+       margin.left = 18,
+       diamond=c(nrow(Sub)),
+       diamond.col='black',
+       groups=Sub$Group,
+       grouplabs=c('Studies',
+                   'Overall\n'),
+       em = "IRR", xlim = c(0.5,4.0))
+
+```
+
+
+## Treatment step 5-3
+
+```{r , echo= FALSE, fig.width= 10 , fig.height=8}
+
+Sub <- Final %>%
+  filter(Final$Predictor == "Treatment_step_5_3")
+
+u <- metagen(Sub$Model.estimate,lower = Sub$CI.Lower.Bound, upper = Sub$CI.Upper.Bound)
+I2 <- u$I2
+I2.low <- u$lower.I2
+I2.up <- u$upper.I2
+I2.p <- ifelse( u$pval.Q < 0.0001, "<.0001", u$pval.Q )
+
+Sub <- rbind(Sub, c("Pooled effect","Treatment_step_5_3 ",as.numeric(Pooled_estimate[5,c(2)]),as.numeric(Pooled_estimate[5,c(3)]),as.numeric(Pooled_estimate[5,c(4)]),NA,	as.numeric(Pooled_estimate[5,c(5)]))   )
+
+Sub$Model.estimate <- as.numeric(Sub$Model.estimate)
+Sub$CI.Lower.Bound <- as.numeric(Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- as.numeric(Sub$CI.Upper.Bound)
+Sub$Patient_years <- as.numeric(Sub$Patient_years)
+
+Sub$Group <- ifelse(Sub$Study == "Pooled effect",1,0   )
+
+weights <- Sub$Patient_years
+weights[c(nrow(Sub))] <- NA
+
+Sub$Patient_years <- ifelse(is.na(Sub$Model.estimate)== T, NA , Sub$Patient_years)
+Sub$Model.estimate <- ifelse(is.na(Sub$Model.estimate)== T, 0 , Sub$Model.estimate)
+Sub$CI.Lower.Bound <- ifelse(is.na(Sub$CI.Lower.Bound)== T, 0 , Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- ifelse(is.na(Sub$CI.Upper.Bound)== T, 0 , Sub$CI.Upper.Bound)
+
+v <- paste("Heterogeneity : I² =",round(I2,2),"[",round(I2.low,2),"-",round(I2.up,2),"]", sep=" " )
+Sub$Study <- ifelse( Sub$Study == "Pooled effect", paste("Pooled effect\n",v,sep="") , Sub$Study   )
+
+forplo(as.data.frame(Sub[,3:5]), row.labels = Sub$Study,add.columns=Sub$Patient_years,
+       add.colnames=c('Weights'),
+       scaledot.by=weights,
+       title = "Treatment step (5 vs. 3)",
+       left.align=TRUE,
+       margin.right = 12,
+       margin.left = 18,
+       diamond=c(nrow(Sub)),
+       diamond.col='black',
+       groups=Sub$Group,
+       grouplabs=c('Studies',
+                   'Overall\n'),
+       em = "IRR", xlim = c(0.6,4.0))
+
+```
+
+# Forest plot - Predictors
+
+```{r , echo = FALSE, fig.width= 12 , fig.height=12}
+
+forplo(as.data.frame(Pooled_estimate[-23,2:4]), row.labels = Pooled_estimate$Variables[-23],add.columns=Pooled_estimate$Patient_years[-23],
+       add.colnames=c('Weights'),
+       scaledot.by=Pooled_estimate$Patient_years[-23],
+       title = "Predictors",
+       left.align=TRUE,
+       margin.right = 12,
+       margin.left = 22,
+       em = "IRR", xlim = c(0.9,3.0))
+			
+```
+
+```{r , echo = FALSE, fig.width= 12 , fig.height=12}
+
+forplo(as.data.frame(Pooled_estimate[,2:4]), row.labels = Pooled_estimate$Variables,add.columns=Pooled_estimate$Patient_years,
+       add.colnames=c('Weights'),
+       scaledot.by=Pooled_estimate$Patient_years,
+       title = "Predictors",
+       left.align=TRUE,
+       margin.right = 12,
+       margin.left = 22,
+       em = "IRR", xlim = c(0.9,3.0))
+			
+```
+
+# FeNO Eos categorized
+
+## 3x3 Crosstable {.tabset}
+
+```{r , echo = FALSE, fig.width= 10 , fig.height=12}
+
+Data.subset <- Data %>%
+  filter(.imp == 1) %>%
+  group_by(Sequential_number) %>%
+  mutate( FeNO_Eos_first = substring(FeNO_Eos, 1, 1),
+          FeNO_Eos_second = substring(FeNO_Eos, 2, 2))%>%
+  dplyr::select(c(3,4,38,39))
+
+```
+
+### AZISAST
+
+```{r , echo = FALSE, fig.width= 10 , fig.height=12}
+
+with(Data.subset[Data.subset$Enrolled_Trial_name== "AZISAST", ], CrossTable(FeNO_Eos_first, FeNO_Eos_second))
+
+```
+
+### BENRAP2B     
+
+```{r , echo = FALSE, fig.width= 10 , fig.height=12}
+
+with(Data.subset[Data.subset$Enrolled_Trial_name== "BENRAP2B", ], CrossTable(FeNO_Eos_first, FeNO_Eos_second))
+
+```
+
+### CAPTAIN       
+
+```{r , echo = FALSE, fig.width= 10 , fig.height=12}
+
+with(Data.subset[Data.subset$Enrolled_Trial_name== "CAPTAIN", ], CrossTable(FeNO_Eos_first, FeNO_Eos_second))
+
+```
+
+### COSTA       
+
+```{r , echo = FALSE, fig.width= 10 , fig.height=12}
+
+with(Data.subset[Data.subset$Enrolled_Trial_name== "COSTA", ], CrossTable(FeNO_Eos_first, FeNO_Eos_second))
+
+```
+
+### DREAM    
+
+```{r , echo = FALSE, fig.width= 10 , fig.height=12}
+
+with(Data.subset[Data.subset$Enrolled_Trial_name== "DREAM", ], CrossTable(FeNO_Eos_first, FeNO_Eos_second))
+
+```
+
+### DRI12544       
+
+```{r , echo = FALSE, fig.width= 10 , fig.height=12}
+
+with(Data.subset[Data.subset$Enrolled_Trial_name== "DRI12544", ], CrossTable(FeNO_Eos_first, FeNO_Eos_second))
+
+```
+
+### EXTRA   
+
+```{r , echo = FALSE, fig.width= 10 , fig.height=12}
+
+with(Data.subset[Data.subset$Enrolled_Trial_name== "EXTRA", ], CrossTable(FeNO_Eos_first, FeNO_Eos_second))
+
+```
+
+### LAVOLTA_1   
+
+```{r , echo = FALSE, fig.width= 10 , fig.height=12}
+
+with(Data.subset[Data.subset$Enrolled_Trial_name== "LAVOLTA_1", ], CrossTable(FeNO_Eos_first, FeNO_Eos_second))
+
+```
+
+### LAVOLTA_2 
+
+```{r , echo = FALSE, fig.width= 10 , fig.height=12}
+
+with(Data.subset[Data.subset$Enrolled_Trial_name== "LAVOLTA_2", ], CrossTable(FeNO_Eos_first, FeNO_Eos_second))
+
+```
+
+### LUSTER_1    
+
+```{r , echo = FALSE, fig.width= 10 , fig.height=12}
+
+with(Data.subset[Data.subset$Enrolled_Trial_name== "LUSTER_1", ], CrossTable(FeNO_Eos_first, FeNO_Eos_second))
+
+```
+
+### LUSTER_2        
+
+```{r , echo = FALSE, fig.width= 10 , fig.height=12}
+
+with(Data.subset[Data.subset$Enrolled_Trial_name== "LUSTER_2", ], CrossTable(FeNO_Eos_first, FeNO_Eos_second))
+
+```
+
+### LUTE       
+
+```{r , echo = FALSE, fig.width= 10 , fig.height=12}
+
+with(Data.subset[Data.subset$Enrolled_Trial_name== "LUTE", ], CrossTable(FeNO_Eos_first, FeNO_Eos_second))
+
+```
+
+### MILLY   
+
+```{r , echo = FALSE, fig.width= 10 , fig.height=12}
+
+with(Data.subset[Data.subset$Enrolled_Trial_name== "MILLY", ], CrossTable(FeNO_Eos_first, FeNO_Eos_second))
+
+```
+
+### NAVIGATOR 
+
+```{r , echo = FALSE, fig.width= 10 , fig.height=12}
+
+with(Data.subset[Data.subset$Enrolled_Trial_name== "NAVIGATOR", ], CrossTable(FeNO_Eos_first, FeNO_Eos_second))
+
+```
+
+### Novel_START        
+
+```{r , echo = FALSE, fig.width= 10 , fig.height=12}
+
+with(Data.subset[Data.subset$Enrolled_Trial_name== "Novel_START", ], CrossTable(FeNO_Eos_first, FeNO_Eos_second))
+
+```
+
+### PACT     
+
+```{r , echo = FALSE, fig.width= 10 , fig.height=12}
+
+with(Data.subset[Data.subset$Enrolled_Trial_name== "PACT", ], CrossTable(FeNO_Eos_first, FeNO_Eos_second))
+
+```
+
+### PATHWAY   
+
+```{r , echo = FALSE, fig.width= 10 , fig.height=12}
+
+with(Data.subset[Data.subset$Enrolled_Trial_name== "PATHWAY", ], CrossTable(FeNO_Eos_first, FeNO_Eos_second))
+
+```
+
+### PRACTICAL 
+
+```{r , echo = FALSE, fig.width= 10 , fig.height=12}
+
+with(Data.subset[Data.subset$Enrolled_Trial_name== "PRACTICAL", ], CrossTable(FeNO_Eos_first, FeNO_Eos_second))
+
+```
+
+### QUEST   
+
+```{r , echo = FALSE, fig.width= 10 , fig.height=12}
+
+with(Data.subset[Data.subset$Enrolled_Trial_name== "QUEST", ], CrossTable(FeNO_Eos_first, FeNO_Eos_second))
+
+```
+
+### STRATOS_1   
+
+```{r , echo = FALSE, fig.width= 10 , fig.height=12}
+
+with(Data.subset[Data.subset$Enrolled_Trial_name== "STRATOS_1", ], CrossTable(FeNO_Eos_first, FeNO_Eos_second))
+
+```
+
+### STRATOS_2       
+
+```{r , echo = FALSE, fig.width= 10 , fig.height=12}
+
+with(Data.subset[Data.subset$Enrolled_Trial_name== "STRATOS_2", ], CrossTable(FeNO_Eos_first, FeNO_Eos_second))
+
+```
+
+### VERSE 
+
+```{r , echo = FALSE, fig.width= 10 , fig.height=12}
+
+with(Data.subset[Data.subset$Enrolled_Trial_name== "VERSE", ], CrossTable(FeNO_Eos_first, FeNO_Eos_second))
+
+```
+
+### All studies 
+
+```{r , echo = FALSE, fig.width= 10 , fig.height=12}
+
+with(Data.subset, CrossTable(FeNO_Eos_first, FeNO_Eos_second))
+
+```
+
+## Forest plot {.tabset}
+
+```{r , echo = FALSE, fig.width= 10 , fig.height=12}
+
+Final_FeNO_Eos_cat <- read_excel("Final_FeNO_Eos_cat.xlsx", sheet = "Loop")
+
+Final_FeNO_pooled <- read_excel("Final_FeNO_Eos_cat.xlsx", sheet = "Pooled")
+
+Final_FeNO_Eos_cat$Study <- ifelse( Final_FeNO_Eos_cat$Study == "VERSE", "LUTE-VERSE",Final_FeNO_Eos_cat$Study ) # Easiest way to have Verse after LUTE
+
+Final_FeNO_Eos_cat <- Final_FeNO_Eos_cat[order(Final_FeNO_Eos_cat$Ref,Final_FeNO_Eos_cat$Study ),] # Easiest way to have Verse after LUTE
+
+Final_FeNO_Eos_cat$Study <- ifelse( Final_FeNO_Eos_cat$Study == "LUTE-VERSE", "VERSE",Final_FeNO_Eos_cat$Study ) # Easiest way to have Verse after LUTE
+
+Final_FeNO_Eos_cat$Patient_years <- round(Final_FeNO_Eos_cat$Patient_years,1) 
+
+Final_FeNO_pooled$Patient_years <- round(Final_FeNO_pooled$Patient_years,1) 
+
+Final_FeNO_Eos_cat$Study <- ifelse( Final_FeNO_Eos_cat$Study == "LAVOLTA_1", "LAVOLTA-1",Final_FeNO_Eos_cat$Study )
+Final_FeNO_Eos_cat$Study <- ifelse( Final_FeNO_Eos_cat$Study == "LAVOLTA_2", "LAVOLTA-2",Final_FeNO_Eos_cat$Study )
+Final_FeNO_Eos_cat$Study <- ifelse( Final_FeNO_Eos_cat$Study == "LUSTER_1", "LUSTER-1",Final_FeNO_Eos_cat$Study )
+Final_FeNO_Eos_cat$Study <- ifelse( Final_FeNO_Eos_cat$Study == "LUSTER_2", "LUSTER-2",Final_FeNO_Eos_cat$Study )
+Final_FeNO_Eos_cat$Study <- ifelse( Final_FeNO_Eos_cat$Study == "STRATOS_1", "STRATOS-1",Final_FeNO_Eos_cat$Study )
+Final_FeNO_Eos_cat$Study <- ifelse( Final_FeNO_Eos_cat$Study == "STRATOS_2", "STRATOS-2",Final_FeNO_Eos_cat$Study )
+Final_FeNO_Eos_cat$Study <- ifelse( Final_FeNO_Eos_cat$Study == "Novel_START", "Novel START",Final_FeNO_Eos_cat$Study )
+
+```
+
+### AA → AB
+
+```{r , echo= FALSE, fig.width= 8 , fig.height=7}
+
+Sub <- Final_FeNO_Eos_cat %>%
+  filter(Final_FeNO_Eos_cat$Ref == "FeNO_EosAB")
+
+u <- metagen(Sub$Model.estimate,lower = Sub$CI.Lower.Bound, upper = Sub$CI.Upper.Bound)
+I2 <- u$I2
+I2.low <- u$lower.I2
+I2.up <- u$upper.I2
+I2.p <- ifelse( u$pval.Q < 0.0001, "<.0001", u$pval.Q )
+
+Sub <- rbind(Sub, c("Pooled effect","FeNO_EosAB",as.numeric(Final_FeNO_pooled[1,c(2)]),as.numeric(Final_FeNO_pooled[1,c(3)]),as.numeric(Final_FeNO_pooled[1,c(4)]),NA,	as.numeric(Final_FeNO_pooled[1,c(5)]))   )
+
+Sub$Model.estimate <- as.numeric(Sub$Model.estimate)
+Sub$CI.Lower.Bound <- as.numeric(Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- as.numeric(Sub$CI.Upper.Bound)
+Sub$Patient_years <- as.numeric(Sub$Patient_years)
+
+Sub$Group <- ifelse(Sub$Study == "Pooled effect",1,0   )
+
+weights <- Sub$Patient_years
+weights[c(nrow(Sub))] <- NA
+
+Sub$Patient_years <- ifelse(is.na(Sub$Model.estimate)== T, NA , Sub$Patient_years)
+Sub$Model.estimate <- ifelse(is.na(Sub$Model.estimate)== T, 0 , Sub$Model.estimate)
+Sub$CI.Lower.Bound <- ifelse(is.na(Sub$CI.Lower.Bound)== T, 0 , Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- ifelse(is.na(Sub$CI.Upper.Bound)== T, 0 , Sub$CI.Upper.Bound)
+
+v <- paste("Heterogeneity : I² =",round(I2,2),"[",round(I2.low,2),"-",round(I2.up,2),"]", sep=" " )
+Sub$Study <- ifelse( Sub$Study == "Pooled effect", paste("Pooled effect\n",v,sep="") , Sub$Study   )
+
+forplo(as.data.frame(Sub[,3:5]), row.labels = Sub$Study,add.columns=Sub$Patient_years,
+       add.colnames=c('Weights'),
+       scaledot.by=weights,
+       title = "FeNO Eos - AB",
+       left.align=TRUE,
+       margin.right = 12,
+       margin.left = 18,
+       diamond=c(nrow(Sub)),
+       diamond.col='black',
+       groups=Sub$Group,
+       grouplabs=c('Studies',
+                   'Overall\n'),
+       em = "IRR")
+
+```
+
+### AA → AC
+
+```{r , echo= FALSE, fig.width= 8 , fig.height=7}
+
+Sub <- Final_FeNO_Eos_cat %>%
+  filter(Final_FeNO_Eos_cat$Ref == "FeNO_EosAC")
+
+u <- metagen(Sub$Model.estimate,lower = Sub$CI.Lower.Bound, upper = Sub$CI.Upper.Bound)
+I2 <- u$I2
+I2.low <- u$lower.I2
+I2.up <- u$upper.I2
+I2.p <- ifelse( u$pval.Q < 0.0001, "<.0001", u$pval.Q )
+
+Sub <- rbind(Sub, c("Pooled effect","FeNO_EosAC",as.numeric(Final_FeNO_pooled[2,c(2)]),as.numeric(Final_FeNO_pooled[2,c(3)]),as.numeric(Final_FeNO_pooled[2,c(4)]),NA,	as.numeric(Final_FeNO_pooled[2,c(5)]))   )
+
+Sub$Model.estimate <- as.numeric(Sub$Model.estimate)
+Sub$CI.Lower.Bound <- as.numeric(Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- as.numeric(Sub$CI.Upper.Bound)
+Sub$Patient_years <- as.numeric(Sub$Patient_years)
+
+Sub$Group <- ifelse(Sub$Study == "Pooled effect",1,0   )
+
+weights <- Sub$Patient_years
+weights[c(nrow(Sub))] <- NA
+
+Sub$Patient_years <- ifelse(is.na(Sub$Model.estimate)== T, NA , Sub$Patient_years)
+Sub$Model.estimate <- ifelse(is.na(Sub$Model.estimate)== T, 0 , Sub$Model.estimate)
+Sub$CI.Lower.Bound <- ifelse(is.na(Sub$CI.Lower.Bound)== T, 0 , Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- ifelse(is.na(Sub$CI.Upper.Bound)== T, 0 , Sub$CI.Upper.Bound)
+
+v <- paste("Heterogeneity : I² =",round(I2,2),"[",round(I2.low,2),"-",round(I2.up,2),"]", sep=" " )
+Sub$Study <- ifelse( Sub$Study == "Pooled effect", paste("Pooled effect\n",v,sep="") , Sub$Study   )
+
+forplo(as.data.frame(Sub[,3:5]), row.labels = Sub$Study,add.columns=Sub$Patient_years,
+       add.colnames=c('Weights'),
+       scaledot.by=weights,
+       title = "FeNO Eos - AC",
+       left.align=TRUE,
+       margin.right = 12,
+       margin.left = 18,
+       diamond=c(nrow(Sub)),
+       diamond.col='black',
+       groups=Sub$Group,
+       grouplabs=c('Studies',
+                   'Overall\n'),
+       em = "IRR")
+
+```
+
+### AA → BA
+
+```{r , echo= FALSE, fig.width= 8 , fig.height=7}
+
+Sub <- Final_FeNO_Eos_cat %>%
+  filter(Final_FeNO_Eos_cat$Ref == "FeNO_EosBA")
+
+u <- metagen(Sub$Model.estimate,lower = Sub$CI.Lower.Bound, upper = Sub$CI.Upper.Bound)
+I2 <- u$I2
+I2.low <- u$lower.I2
+I2.up <- u$upper.I2
+I2.p <- ifelse( u$pval.Q < 0.0001, "<.0001", u$pval.Q )
+
+Sub <- rbind(Sub, c("Pooled effect","FeNO_EosBA",as.numeric(Final_FeNO_pooled[3,c(2)]),as.numeric(Final_FeNO_pooled[3,c(3)]),as.numeric(Final_FeNO_pooled[3,c(4)]),NA,	as.numeric(Final_FeNO_pooled[3,c(5)]))   )
+
+Sub$Model.estimate <- as.numeric(Sub$Model.estimate)
+Sub$CI.Lower.Bound <- as.numeric(Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- as.numeric(Sub$CI.Upper.Bound)
+Sub$Patient_years <- as.numeric(Sub$Patient_years)
+
+Sub$Group <- ifelse(Sub$Study == "Pooled effect",1,0   )
+
+weights <- Sub$Patient_years
+weights[c(nrow(Sub))] <- NA
+
+Sub$Patient_years <- ifelse(is.na(Sub$Model.estimate)== T, NA , Sub$Patient_years)
+Sub$Model.estimate <- ifelse(is.na(Sub$Model.estimate)== T, 0 , Sub$Model.estimate)
+Sub$CI.Lower.Bound <- ifelse(is.na(Sub$CI.Lower.Bound)== T, 0 , Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- ifelse(is.na(Sub$CI.Upper.Bound)== T, 0 , Sub$CI.Upper.Bound)
+
+v <- paste("Heterogeneity : I² =",round(I2,2),"[",round(I2.low,2),"-",round(I2.up,2),"]", sep=" " )
+Sub$Study <- ifelse( Sub$Study == "Pooled effect", paste("Pooled effect\n",v,sep="") , Sub$Study   )
+
+forplo(as.data.frame(Sub[,3:5]), row.labels = Sub$Study,add.columns=Sub$Patient_years,
+       add.colnames=c('Weights'),
+       scaledot.by=weights,
+       title = "FeNO Eos - BA",
+       left.align=TRUE,
+       margin.right = 12,
+       margin.left = 18,
+       diamond=c(nrow(Sub)),
+       diamond.col='black',
+       groups=Sub$Group,
+       grouplabs=c('Studies',
+                   'Overall\n'),
+       em = "IRR")
+
+```
+
+
+### AA → BB
+
+```{r , echo= FALSE, fig.width= 8 , fig.height=7}
+
+Sub <- Final_FeNO_Eos_cat %>%
+  filter(Final_FeNO_Eos_cat$Ref == "FeNO_EosBB")
+
+u <- metagen(Sub$Model.estimate,lower = Sub$CI.Lower.Bound, upper = Sub$CI.Upper.Bound)
+I2 <- u$I2
+I2.low <- u$lower.I2
+I2.up <- u$upper.I2
+I2.p <- ifelse( u$pval.Q < 0.0001, "<.0001", u$pval.Q )
+
+Sub <- rbind(Sub, c("Pooled effect","FeNO_EosBB",as.numeric(Final_FeNO_pooled[4,c(2)]),as.numeric(Final_FeNO_pooled[4,c(3)]),as.numeric(Final_FeNO_pooled[4,c(4)]),NA,	as.numeric(Final_FeNO_pooled[4,c(5)]))   )
+
+Sub$Model.estimate <- as.numeric(Sub$Model.estimate)
+Sub$CI.Lower.Bound <- as.numeric(Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- as.numeric(Sub$CI.Upper.Bound)
+Sub$Patient_years <- as.numeric(Sub$Patient_years)
+
+Sub$Group <- ifelse(Sub$Study == "Pooled effect",1,0   )
+
+weights <- Sub$Patient_years
+weights[c(nrow(Sub))] <- NA
+
+Sub$Patient_years <- ifelse(is.na(Sub$Model.estimate)== T, NA , Sub$Patient_years)
+Sub$Model.estimate <- ifelse(is.na(Sub$Model.estimate)== T, 0 , Sub$Model.estimate)
+Sub$CI.Lower.Bound <- ifelse(is.na(Sub$CI.Lower.Bound)== T, 0 , Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- ifelse(is.na(Sub$CI.Upper.Bound)== T, 0 , Sub$CI.Upper.Bound)
+
+v <- paste("Heterogeneity : I² =",round(I2,2),"[",round(I2.low,2),"-",round(I2.up,2),"]", sep=" " )
+Sub$Study <- ifelse( Sub$Study == "Pooled effect", paste("Pooled effect\n",v,sep="") , Sub$Study   )
+
+forplo(as.data.frame(Sub[,3:5]), row.labels = Sub$Study,add.columns=Sub$Patient_years,
+       add.colnames=c('Weights'),
+       scaledot.by=weights,
+       title = "FeNO Eos - BB",
+       left.align=TRUE,
+       margin.right = 12,
+       margin.left = 18,
+       diamond=c(nrow(Sub)),
+       diamond.col='black',
+       groups=Sub$Group,
+       grouplabs=c('Studies',
+                   'Overall\n'),
+       em = "IRR")
+
+```
+
+### AA → BC
+
+```{r , echo= FALSE, fig.width= 8 , fig.height=7}
+
+Sub <- Final_FeNO_Eos_cat %>%
+  filter(Final_FeNO_Eos_cat$Ref == "FeNO_EosBC")
+
+u <- metagen(Sub$Model.estimate,lower = Sub$CI.Lower.Bound, upper = Sub$CI.Upper.Bound)
+I2 <- u$I2
+I2.low <- u$lower.I2
+I2.up <- u$upper.I2
+I2.p <- ifelse( u$pval.Q < 0.0001, "<.0001", u$pval.Q )
+
+Sub <- rbind(Sub, c("Pooled effect","FeNO_EosBC",as.numeric(Final_FeNO_pooled[5,c(2)]),as.numeric(Final_FeNO_pooled[5,c(3)]),as.numeric(Final_FeNO_pooled[5,c(4)]),NA,	as.numeric(Final_FeNO_pooled[5,c(5)]))   )
+
+Sub$Model.estimate <- as.numeric(Sub$Model.estimate)
+Sub$CI.Lower.Bound <- as.numeric(Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- as.numeric(Sub$CI.Upper.Bound)
+Sub$Patient_years <- as.numeric(Sub$Patient_years)
+
+Sub$Group <- ifelse(Sub$Study == "Pooled effect",1,0   )
+
+weights <- Sub$Patient_years
+weights[c(nrow(Sub))] <- NA
+
+Sub$Patient_years <- ifelse(is.na(Sub$Model.estimate)== T, NA , Sub$Patient_years)
+Sub$Model.estimate <- ifelse(is.na(Sub$Model.estimate)== T, 0 , Sub$Model.estimate)
+Sub$CI.Lower.Bound <- ifelse(is.na(Sub$CI.Lower.Bound)== T, 0 , Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- ifelse(is.na(Sub$CI.Upper.Bound)== T, 0 , Sub$CI.Upper.Bound)
+
+v <- paste("Heterogeneity : I² =",round(I2,2),"[",round(I2.low,2),"-",round(I2.up,2),"]", sep=" " )
+Sub$Study <- ifelse( Sub$Study == "Pooled effect", paste("Pooled effect\n",v,sep="") , Sub$Study   )
+
+forplo(as.data.frame(Sub[,3:5]), row.labels = Sub$Study,add.columns=Sub$Patient_years,
+       add.colnames=c('Weights'),
+       scaledot.by=weights,
+       title = "FeNO Eos - BC",
+       left.align=TRUE,
+       margin.right = 12,
+       margin.left = 18,
+       diamond=c(nrow(Sub)),
+       diamond.col='black',
+       groups=Sub$Group,
+       grouplabs=c('Studies',
+                   'Overall\n'),
+       em = "IRR")
+
+```
+
+### AA → CA
+
+```{r , echo= FALSE, fig.width= 8 , fig.height=7}
+
+Sub <- Final_FeNO_Eos_cat %>%
+  filter(Final_FeNO_Eos_cat$Ref == "FeNO_EosCA")
+
+u <- metagen(Sub$Model.estimate,lower = Sub$CI.Lower.Bound, upper = Sub$CI.Upper.Bound)
+I2 <- u$I2
+I2.low <- u$lower.I2
+I2.up <- u$upper.I2
+I2.p <- ifelse( u$pval.Q < 0.0001, "<.0001", u$pval.Q )
+
+Sub <- rbind(Sub, c("Pooled effect","FeNO_EosCA",as.numeric(Final_FeNO_pooled[6,c(2)]),as.numeric(Final_FeNO_pooled[6,c(3)]),as.numeric(Final_FeNO_pooled[6,c(4)]),NA,	as.numeric(Final_FeNO_pooled[6,c(5)]))   )
+
+Sub$Model.estimate <- as.numeric(Sub$Model.estimate)
+Sub$CI.Lower.Bound <- as.numeric(Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- as.numeric(Sub$CI.Upper.Bound)
+Sub$Patient_years <- as.numeric(Sub$Patient_years)
+
+Sub$Group <- ifelse(Sub$Study == "Pooled effect",1,0   )
+
+weights <- Sub$Patient_years
+weights[c(nrow(Sub))] <- NA
+
+Sub$Patient_years <- ifelse(is.na(Sub$Model.estimate)== T, NA , Sub$Patient_years)
+Sub$Model.estimate <- ifelse(is.na(Sub$Model.estimate)== T, 0 , Sub$Model.estimate)
+Sub$CI.Lower.Bound <- ifelse(is.na(Sub$CI.Lower.Bound)== T, 0 , Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- ifelse(is.na(Sub$CI.Upper.Bound)== T, 0 , Sub$CI.Upper.Bound)
+
+v <- paste("Heterogeneity : I² =",round(I2,2),"[",round(I2.low,2),"-",round(I2.up,2),"]", sep=" " )
+Sub$Study <- ifelse( Sub$Study == "Pooled effect", paste("Pooled effect\n",v,sep="") , Sub$Study   )
+
+forplo(as.data.frame(Sub[,3:5]), row.labels = Sub$Study,add.columns=Sub$Patient_years,
+       add.colnames=c('Weights'),
+       scaledot.by=weights,
+       title = "FeNO Eos - CA",
+       left.align=TRUE,
+       margin.right = 12,
+       margin.left = 18,
+       diamond=c(nrow(Sub)),
+       diamond.col='black',
+       groups=Sub$Group,
+       grouplabs=c('Studies',
+                   'Overall\n'),
+       em = "IRR")
+
+```
+
+### AA → CB
+
+```{r , echo= FALSE, fig.width= 8 , fig.height=7}
+
+Sub <- Final_FeNO_Eos_cat %>%
+  filter(Final_FeNO_Eos_cat$Ref == "FeNO_EosCB")
+
+u <- metagen(Sub$Model.estimate,lower = Sub$CI.Lower.Bound, upper = Sub$CI.Upper.Bound)
+I2 <- u$I2
+I2.low <- u$lower.I2
+I2.up <- u$upper.I2
+I2.p <- ifelse( u$pval.Q < 0.0001, "<.0001", u$pval.Q )
+
+Sub <- rbind(Sub, c("Pooled effect","FeNO_EosCB",as.numeric(Final_FeNO_pooled[7,c(2)]),as.numeric(Final_FeNO_pooled[7,c(3)]),as.numeric(Final_FeNO_pooled[7,c(4)]),NA,	as.numeric(Final_FeNO_pooled[7,c(5)]))   )
+
+Sub$Model.estimate <- as.numeric(Sub$Model.estimate)
+Sub$CI.Lower.Bound <- as.numeric(Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- as.numeric(Sub$CI.Upper.Bound)
+Sub$Patient_years <- as.numeric(Sub$Patient_years)
+
+Sub$Group <- ifelse(Sub$Study == "Pooled effect",1,0   )
+
+weights <- Sub$Patient_years
+weights[c(nrow(Sub))] <- NA
+
+Sub$Patient_years <- ifelse(is.na(Sub$Model.estimate)== T, NA , Sub$Patient_years)
+Sub$Model.estimate <- ifelse(is.na(Sub$Model.estimate)== T, 0 , Sub$Model.estimate)
+Sub$CI.Lower.Bound <- ifelse(is.na(Sub$CI.Lower.Bound)== T, 0 , Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- ifelse(is.na(Sub$CI.Upper.Bound)== T, 0 , Sub$CI.Upper.Bound)
+
+v <- paste("Heterogeneity : I² =",round(I2,2),"[",round(I2.low,2),"-",round(I2.up,2),"]", sep=" " )
+Sub$Study <- ifelse( Sub$Study == "Pooled effect", paste("Pooled effect\n",v,sep="") , Sub$Study   )
+
+forplo(as.data.frame(Sub[,3:5]), row.labels = Sub$Study,add.columns=Sub$Patient_years,
+       add.colnames=c('Weights'),
+       scaledot.by=weights,
+       title = "FeNO Eos - CB",
+       left.align=TRUE,
+       margin.right = 12,
+       margin.left = 18,
+       diamond=c(nrow(Sub)),
+       diamond.col='black',
+       groups=Sub$Group,
+       grouplabs=c('Studies',
+                   'Overall\n'),
+       em = "IRR")
+
+```
+
+### AA → CC
+
+```{r , echo= FALSE, fig.width= 8 , fig.height=7}
+
+Sub <- Final_FeNO_Eos_cat %>%
+  filter(Final_FeNO_Eos_cat$Ref == "FeNO_EosCC")
+
+u <- metagen(Sub$Model.estimate,lower = Sub$CI.Lower.Bound, upper = Sub$CI.Upper.Bound)
+I2 <- u$I2
+I2.low <- u$lower.I2
+I2.up <- u$upper.I2
+I2.p <- ifelse( u$pval.Q < 0.0001, "<.0001", u$pval.Q )
+
+Sub <- rbind(Sub, c("Pooled effect","FeNO_EosCC",as.numeric(Final_FeNO_pooled[8,c(2)]),as.numeric(Final_FeNO_pooled[8,c(3)]),as.numeric(Final_FeNO_pooled[8,c(4)]),NA,	as.numeric(Final_FeNO_pooled[8,c(5)]))   )
+
+Sub$Model.estimate <- as.numeric(Sub$Model.estimate)
+Sub$CI.Lower.Bound <- as.numeric(Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- as.numeric(Sub$CI.Upper.Bound)
+Sub$Patient_years <- as.numeric(Sub$Patient_years)
+
+Sub$Group <- ifelse(Sub$Study == "Pooled effect",1,0   )
+
+weights <- Sub$Patient_years
+weights[c(nrow(Sub))] <- NA
+
+Sub$Patient_years <- ifelse(is.na(Sub$Model.estimate)== T, NA , Sub$Patient_years)
+Sub$Model.estimate <- ifelse(is.na(Sub$Model.estimate)== T, 0 , Sub$Model.estimate)
+Sub$CI.Lower.Bound <- ifelse(is.na(Sub$CI.Lower.Bound)== T, 0 , Sub$CI.Lower.Bound)
+Sub$CI.Upper.Bound <- ifelse(is.na(Sub$CI.Upper.Bound)== T, 0 , Sub$CI.Upper.Bound)
+
+v <- paste("Heterogeneity : I² =",round(I2,2),"[",round(I2.low,2),"-",round(I2.up,2),"]", sep=" " )
+Sub$Study <- ifelse( Sub$Study == "Pooled effect", paste("Pooled effect\n",v,sep="") , Sub$Study   )
+
+forplo(as.data.frame(Sub[,3:5]), row.labels = Sub$Study,add.columns=Sub$Patient_years,
+       add.colnames=c('Weights'),
+       scaledot.by=weights,
+       title = "FeNO Eos - CC",
+       left.align=TRUE,
+       margin.right = 12,
+       margin.left = 18,
+       diamond=c(nrow(Sub)),
+       diamond.col='black',
+       groups=Sub$Group,
+       grouplabs=c('Studies',
+                   'Overall\n'),
+       em = "IRR")
+
+```
+
+### All pooled estimates
+
+```{r , echo = FALSE, fig.width= 10 , fig.height=6}
+
+forplo(as.data.frame(Final_FeNO_pooled[,2:4]), row.labels = Final_FeNO_pooled$Ref,add.columns=Final_FeNO_pooled$Patient_years,
+       add.colnames=c('Weights'),
+       scaledot.by=Final_FeNO_pooled$Patient_years,
+       title = "",
+       left.align=TRUE,
+       margin.right = 12,
+       margin.left = 18,
+       em = "IRR")
+			
+```
+
