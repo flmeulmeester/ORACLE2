@@ -37,8 +37,8 @@ text-align: justify}
 </style>
 
 # Packages
-
-```{r Packages, eval = FALSE}
+ 
+```{r Packages, eval = FALSE, results = 'hide'}
 
 r = getOption("repos")
 r["CRAN"] = "http://cran.us.r-project.org"
@@ -127,20 +127,20 @@ data_ORACLE$Total_IgE = as.numeric(data_ORACLE$Total_IgE)
 sum(is.na(data_ORACLE$Total_IgE)) # Ensure no new NAs were introduced
 ```
 
-```{r, eval = FALSE}
+```{r, eval = FALSE, warning = FALSE}
 # FEV1 rev and Adherence in Trial are not always percentages
 ## Check which trials did not code these variables as percentages
 summary_table_FEV1r <- data_ORACLE %>%
   dplyr::group_by(Enrolled_Trial_name) %>%
   dplyr::summarize(
-    min_FEV1r = min(FEV1_PCT_reversibility_postBD, na.rm = FALSE),
-    max_FEV1r = max(FEV1_PCT_reversibility_postBD, na.rm = FALSE)) # STATOS 1 and 2
+    min_FEV1r = min(FEV1_PCT_reversibility_postBD, na.rm = TRUE),
+    max_FEV1r = max(FEV1_PCT_reversibility_postBD, na.rm = TRUE)) # STATOS 1 and 2
 
 summary_table_adh <- data_ORACLE %>%
   dplyr::group_by(Enrolled_Trial_name) %>%
   dplyr::summarize(
-    min_adh = min(Adherence_InTrial_quantity, na.rm = FALSE),
-    max_adh = max(Adherence_InTrial_quantity, na.rm = FALSE)) # CAPTAIN
+    min_adh = min(Adherence_InTrial_quantity, na.rm = TRUE),
+    max_adh = max(Adherence_InTrial_quantity, na.rm = TRUE)) # CAPTAIN
 ```
 
 ```{r, eval = FALSE}
@@ -1030,6 +1030,7 @@ columns_to_truncate <- c(22,24,44,46,48,50,58,62:87,94:97)
 
 ```{r, eval = FALSE}
 # Truncate the specified columns with 1% as the lower bound and 99% as the upper bound
+## Code is used only in R version 4.3.1
 
 # Create a separate dataset for truncation
 data_to_truncate <- data_arm_age12
@@ -1047,6 +1048,37 @@ for (col in columns_to_truncate){
   data_to_truncate[,col] <- cutoff(data_to_truncate,var=col)
 }
 ```
+
+
+```{r, eval = FALSE}
+# Truncate the specified columns with 1% as the lower bound and 99% as the upper bound
+## Code is used in R version 4.4.1 and newer
+
+# Create a separate dataset for truncation
+data_to_truncate <- data_arm_age12
+
+# Define a custom Winsorization function
+cutoff <- function(data, var){
+  # Calculate the 0.5% and 99.5% quantiles
+  lower_bound <- quantile(data[[var]], probs = 0.005, na.rm = TRUE)
+  upper_bound <- quantile(data[[var]], probs = 0.995, na.rm = TRUE)
+  
+  # Winsorize the data manually by replacing values outside the bounds
+  data[[var]] <- pmax(pmin(data[[var]], upper_bound), lower_bound)
+  
+  return(data[[var]])  # Return the modified column
+}
+
+# Loop through each column specified for truncation and apply the cutoff function
+for (col in columns_to_truncate){
+  data_to_truncate[[col]] <- cutoff(data_to_truncate, var = col)
+}
+
+# Check the result
+head(data_to_truncate)
+```
+
+
 
 ```{r, eval = FALSE}
 # Summarize specific variables before and after truncation
@@ -1745,6 +1777,33 @@ write.csv(data_arm_age12.SI, 'Network:/file.csv', row.names = FALSE)
 
 # Multiple imputation with mice
 
+```{r}
+# For Lung function measures, check which ones have the lowest % of missing
+
+# Create a named vector with the NA counts for each variable
+na_counts <- c(
+  FEV1_PCT_reversibility_postBD = sum(is.na(data_arm_age12.SI$FEV1_PCT_reversibility_postBD)),
+  FEV1_postBD_PCT_Baseline = sum(is.na(data_arm_age12.SI$FEV1_postBD_PCT_Baseline)),
+  FEV1_postBD_L_Baseline = sum(is.na(data_arm_age12.SI$FEV1_postBD_L_Baseline)),
+  FEV1_preBD_PCT_Baseline = sum(is.na(data_arm_age12.SI$FEV1_preBD_PCT_Baseline)),
+  FEV1_preBD_L_Baseline = sum(is.na(data_arm_age12.SI$FEV1_preBD_L_Baseline)),
+  FEV1_predicted_L = sum(is.na(data_arm_age12.SI$FEV1_predicted_L)),
+  FVC_preBD_L_Baseline = sum(is.na(data_arm_age12.SI$FVC_preBD_L_Baseline)),
+  FVC_preBD_PCT_Baseline = sum(is.na(data_arm_age12.SI$FVC_preBD_PCT_Baseline)),
+  FVC_postBD_L_Baseline = sum(is.na(data_arm_age12.SI$FVC_postBD_L_Baseline)),
+  FVC_predicted_L = sum(is.na(data_arm_age12.SI$FVC_predicted_L)),
+  FVC_postBD_PCT_Baseline = sum(is.na(data_arm_age12.SI$FVC_postBD_PCT_Baseline))
+)
+
+# Convert the vector to a data frame
+na_counts_df <- data.frame(Variable = names(na_counts), NA_Count = na_counts)
+
+# Sort the data frame by the NA counts from lowest to highest
+na_counts_df_sorted <- na_counts_df[order(na_counts_df$NA_Count), ]
+
+```
+
+
 ```{r, eval = FALSE}
 tibble(
   ColumnNumber = seq_along(data_arm_age12.SI),
@@ -1757,7 +1816,7 @@ tibble(
 # Prepare the data frame by removing variables that will not be used for further analysis
 ## By removing variables, you can choose which variables you want to have imputed in the next step
 
-data_arm_age12.SIshort <- data_arm_age12.SI[,!names(data_arm_age12.SI) %in% c("ICS_TYPE", "ICS_Dose_PER_DAY", "ICS_DOSE_CLASS",  "ACT_baseline_score","Blood_Eos_baseline_x10_9_cells_per_L", "Country", "Number_severe_attack_previous_12m", "Number_hospitalisations_for_asthma_previous_12_months","Psychiatric_disease_0no_1yes_9999notknown", "Atopy_history_0no_1yes_9999notknown_COMPUTED","Adherence_PreTrial_quality", "Previous_ICU_0no_1yes_9999notknown", "Previous_Intubation_0no_1yes_9999notknown", "Adherence_InTrial_quality","FEV1_predicted_L","FVC_predicted_L","FEV1_preBD_L_Baseline", "FVC_preBD_L_Baseline", "FEV1_postBD_L_Baseline", "FVC_postBD_L_Baseline", "FEV1PREBD_L_52W", "FEV1PREBD_PCT_52W", "FEV1POSTBD_L_52W","FEV1POSTBD_PCT_52W", "ACQ_baseline_score_item1_sleepawakenings", "ACQ_baseline_score_item2_morningsymptoms", "ACQ_baseline_score_item3_activitylimitation", "ACQ_baseline_score_item4_dyspnea", "ACQ_baseline_score_item5_wheezing", "ACQ_baseline_score_item6_RelieverUse", "ACQ_baseline_score_item7_FEV1", "ICS_DOSE_CLASS", "End_FollowUp_Reason")]
+data_arm_age12.SIshort <- data_arm_age12.SI[,!names(data_arm_age12.SI) %in% c("ICS_TYPE", "ICS_Dose_PER_DAY", "ICS_DOSE_CLASS",  "ACT_baseline_score","Blood_Eos_baseline_x10_9_cells_per_L", "Country", "Number_severe_attack_previous_12m", "Number_hospitalisations_for_asthma_previous_12_months","Psychiatric_disease_0no_1yes_9999notknown", "Atopy_history_0no_1yes_9999notknown_COMPUTED","Adherence_PreTrial_quality", "Previous_ICU_0no_1yes_9999notknown", "Previous_Intubation_0no_1yes_9999notknown", "Adherence_InTrial_quality","FEV1_predicted_L","FVC_predicted_L", "FVC_postBD_PCT_Baseline", "FVC_preBD_PCT_Baseline", "FEV1PREBD_L_52W", "FEV1PREBD_PCT_52W", "FEV1POSTBD_L_52W","FEV1POSTBD_PCT_52W", "ACQ_baseline_score_item1_sleepawakenings", "ACQ_baseline_score_item2_morningsymptoms", "ACQ_baseline_score_item3_activitylimitation", "ACQ_baseline_score_item4_dyspnea", "ACQ_baseline_score_item5_wheezing", "ACQ_baseline_score_item6_RelieverUse", "ACQ_baseline_score_item7_FEV1", "ICS_DOSE_CLASS", "End_FollowUp_Reason")]
 
 ```
 
@@ -1776,7 +1835,7 @@ tibble(
 factors <- c(3,4,6,8:11,14,15,17:24,28,30:33,35:37)
 data_arm_age12.SIshort <- data_arm_age12.SIshort %>% mutate(across(all_of(factors), as.factor))
 
-numeric <- c(1,5,7,12,13,16,25:27,29,34,38:53)
+numeric <- c(1,5,7,12,13,16,25:27,29,34,38:55)
 data_arm_age12.SIshort <- data_arm_age12.SIshort %>% mutate(across(all_of(numeric), as.numeric))
 
 data_arm_age12.SIshort$Subject_ID <- as.character(data_arm_age12.SIshort$Subject_ID)
@@ -1807,7 +1866,7 @@ method <- c("","","","","pmm","logreg","pmm","polyreg","polyreg","pmm",
             "logreg","logreg","logreg","logreg","pmm","pmm","pmm","logreg","pmm","logreg",
             "logreg","logreg","logreg","pmm","logreg","logreg","logreg","pmm","pmm","pmm",
             "pmm","pmm","pmm","pmm","pmm","pmm","pmm","pmm","pmm","pmm",
-            "pmm","pmm","pmm")
+            "pmm","pmm","pmm", "pmm", "pmm")
 
 ## Create a predictor matrix
 predM <- make.predictorMatrix(data_arm_age12.SIshort)
@@ -1822,19 +1881,19 @@ predM[, c("Sequential_number","Subject_ID","Treatment_arm","Time_to_First_attack
 
 ## M = 10 creates 10 imputed data sets, Maxit = 30 gives 30 iterations
 ## Define your method and predictor matrix, and set the seed 
-imp_data_ORACLE_final_20240416 <- mice(data_arm_age12.SIshort, m = 10, maxit = 30, method = method, seed = 123, predictorMatrix = predM, printFlag = FALSE)
+imp_data_ORACLE_final_20240918 <- mice(data_arm_age12.SIshort, m = 10, maxit = 30, method = method, seed = 123, predictorMatrix = predM, printFlag = FALSE)
 
-imp_data_ORACLE_final_20240416$loggedEvents # check logged events
+imp_data_ORACLE_final_20240918$loggedEvents # check logged events
 ```
 
 ```{r, eval = FALSE}
 # Check convergence of the imputed data sets
-plot(imp_data_ORACLE_final_20240416)
+plot(imp_data_ORACLE_final_20240918)
 ```
 
 ```{r, eval = FALSE}
 # Write and save as R object file
-saveRDS(imp_data_ORACLE_final_20240416, file="imp_data_ORACLE_final_20240416.RData")
+saveRDS(imp_data_ORACLE_final_20240918, file="imp_data_ORACLE_final_20241002.RData")
 ```
 
 
@@ -1843,8 +1902,8 @@ saveRDS(imp_data_ORACLE_final_20240416, file="imp_data_ORACLE_final_20240416.RDa
 ```{r, eval = FALSE}
 # We created two completed data sets: one in which the systematically missing values are not replaced (=NR) and there are thus no missing values, and one in which the systematically missing values are put back to NA
 
-imp_data_ORACLE_final_COMP_NR = mice::complete(imp_data_ORACLE_final_20240416, action = "long")
-imp_data_ORACLE_final_COMP = mice::complete(imp_data_ORACLE_final_20240416, action = "long")
+imp_data_ORACLE_final_COMP_NR = mice::complete(imp_data_ORACLE_final_20241002, action = "long")
+imp_data_ORACLE_final_COMP = mice::complete(imp_data_ORACLE_final_20241002, action = "long")
 ```
 
 ```{r, eval = FALSE}
@@ -2312,7 +2371,7 @@ data_STRATOS1 <- data_STRATOS1 %>% mutate(across(all_of(characters), as.characte
 data_STRATOS2 <- data_STRATOS2 %>% mutate(across(all_of(characters), as.character))
 data_VERSE <- data_VERSE %>% mutate(across(all_of(characters), as.character))
 
-numeric <- c(1,5,7,12,16,25:27,29,34,38:54)
+numeric <- c(1,5,7,12,16,25:27,29,34,38:56)
 data_AZISAST <- data_AZISAST %>% mutate(across(all_of(numeric), as.numeric))
 data_BENRAP2B <- data_BENRAP2B %>% mutate(across(all_of(numeric), as.numeric))
 data_CAPTAIN <- data_CAPTAIN %>% mutate(across(all_of(numeric), as.numeric))
@@ -2348,7 +2407,7 @@ data_arm_age12_8888 <- bind_rows(data_list)
 ```{r, eval = FALSE}
 # Put the systematically missing values back to NA
 
-for (i in 3:56) {  # Loop through columns 3 to 56
+for (i in 3:58) {  # Loop through columns 3 to 58
   i_8888 <- i - 2  # Corresponding column index in data_arm_age12_8888
   
   rows_to_replace <- data_arm_age12_8888[, i_8888] == 8888 | data_arm_age12_8888[, i_8888] == "8888"
@@ -2368,9 +2427,24 @@ imp_data_ORACLE_final_COMP <- imp_data_ORACLE_final_COMP %>% mutate(across(all_o
 characters <- 4
 imp_data_ORACLE_final_COMP <- imp_data_ORACLE_final_COMP %>% mutate(across(all_of(characters), as.character))
 
-numeric <- c(3,7,9,14,18,27:29,31,36,40:56)
+numeric <- c(3,7,9,14,18,27:29,31,36,40:58)
 imp_data_ORACLE_final_COMP <- imp_data_ORACLE_final_COMP %>% mutate(across(all_of(numeric), as.numeric))
 ```
+
+
+```{r}
+# Add a variable for the FEV1/FVC ratio (calculated)
+imp_data_ORACLE_final_COMP <- imp_data_ORACLE_final_COMP %>%
+  mutate(FEV1_FVC_ratio =
+           (FEV1_preBD_L_Baseline / FVC_preBD_L_Baseline)*100, .after = FEV1_PCT_reversibility_postBD)
+
+imp_data_ORACLE_final_COMP_NR <- imp_data_ORACLE_final_COMP_NR %>%
+  mutate(FEV1_FVC_ratio =
+           (FEV1_preBD_L_Baseline / FVC_preBD_L_Baseline)*100, .after = FEV1_PCT_reversibility_postBD)
+
+summary(imp_data_ORACLE_final_COMP$FEV1_preBD_L_Baseline)
+```
+
 
 ```{r, eval = FALSE}
 # Write and save as CSV file
@@ -2380,6 +2454,42 @@ write.csv(imp_data_ORACLE_final_COMP, 'Network/:File.csv', row.names = FALSE)
 ```{r, eval = FALSE}
 # Write and save as CSV file
 write.csv(imp_data_ORACLE_final_COMP_NR, 'Network/:File.csv', row.names = FALSE)
+```
+
+```{r, eval = FALSE}
+# Read CSV file
+imp_data_ORACLE_final_COMP <- read.csv('I:/Fleur/6. ORACLE/1. Data/ORACLE_testdata/imp_data_ORACLE_final_COMP_20240918.csv')
+```
+
+```{r, eval = FALSE}
+# Read CSV file
+imp_data_ORACLE_final_COMP_NR <- read.csv('I:/Fleur/6. ORACLE/1. Data/ORACLE_testdata/imp_data_ORACLE_final_COMP_NR_20240918.csv')
+```
+
+```{r, eval = FALSE}
+# Check variables and column numbers for the newly completed dataset
+
+tibble(
+  ColumnNumber = seq_along(imp_data_ORACLE_final_COMP),
+  VariableName = names(imp_data_ORACLE_final_COMP)
+  ) %>% print(n= 100)
+```
+
+```{r}
+# Make sure all variables have the correct class assigned
+
+factors <- c(5,6,8,10:13,16,17,19:26,30,32:35,37:39)
+characters <- 4
+numeric <- c(1:3,7,9,14,15,18,27:29,31,36,40:59)
+
+imp_data_ORACLE_final_COMP <- imp_data_ORACLE_final_COMP %>% mutate(across(all_of(factors), as.factor))
+imp_data_ORACLE_final_COMP_NR <- imp_data_ORACLE_final_COMP_NR %>% mutate(across(all_of(factors), as.factor))
+
+imp_data_ORACLE_final_COMP <- imp_data_ORACLE_final_COMP %>% mutate(across(all_of(characters), as.character))
+imp_data_ORACLE_final_COMP_NR <- imp_data_ORACLE_final_COMP_NR %>% mutate(across(all_of(characters), as.character))
+
+imp_data_ORACLE_final_COMP <- imp_data_ORACLE_final_COMP %>% mutate(across(all_of(numeric), as.numeric))
+imp_data_ORACLE_final_COMP_NR <- imp_data_ORACLE_final_COMP_NR %>% mutate(across(all_of(numeric), as.numeric))
 ```
 
 
@@ -2819,6 +2929,19 @@ res_pool
 
 
 ```{r, eval = FALSE}
+# A negative binomial model was fit for the number of severe asthma attacks during follow-up as a dependent variable and FEV1% post-bronchodilator as independent variable, adjusted for offset follow-up duration and trial as factor variable. Rubin's rules were applied.
+
+res_comb = NULL 
+
+for(i in 1:10){
+     res_comb[[i]] = glm.nb(Number_severe_asthma_attacks_during_followup ~ FEV1_postBD_PCT_Baseline + offset(Follow_up_duration_days) + as.factor(Enrolled_Trial_name), data = subset(imp_data_ORACLE_final_COMP, .imp == i))
+}
+
+res_pool <- summary(pool(res_comb), conf.int = TRUE, exp = TRUE)
+res_pool
+```
+
+```{r, eval = FALSE}
 # A negative binomial model was fit for the number of severe asthma attacks during follow-up as a dependent variable and FEV1% reversibility as independent variable, adjusted for offset follow-up duration and trial as factor variable. Rubin's rules were applied.
 
 res_comb = NULL 
@@ -2831,6 +2954,19 @@ res_pool <- summary(pool(res_comb), conf.int = TRUE, exp = TRUE)
 res_pool
 ```
 
+
+```{r, eval = FALSE}
+# A negative binomial model was fit for the number of severe asthma attacks during follow-up as a dependent variable and FEV1/FVC ratio as independent variable, adjusted for offset follow-up duration and trial as factor variable. Rubin's rules were applied.
+
+res_comb = NULL 
+
+for(i in 1:10){
+     res_comb[[i]] = glm.nb(Number_severe_asthma_attacks_during_followup ~ FEV1_FVC_ratio + offset(Follow_up_duration_days) + as.factor(Enrolled_Trial_name), data = subset(imp_data_ORACLE_final_COMP, .imp == i))
+}
+
+res_pool <- summary(pool(res_comb), conf.int = TRUE, exp = TRUE)
+res_pool
+```
 
 
 ```{r, eval = FALSE}
@@ -3135,7 +3271,7 @@ pool.OR
 ```{r, eval = FALSE}
 # A negative binomial model was fit for the number of severe asthma attacks during follow-up as a dependent variable and FEV1% reversibility as independent variable, adjusted for the core clinical set, offset follow-up duration and trial as factor variable. Rubin's rules were applied.
 
-fit <- with(data=imp_data_ORACLE_final_20240416, exp=glm.nb(Number_severe_asthma_attacks_during_followup ~ FEV1_PCT_reversibility_postBD + FEV1_preBD_PCT_Baseline + ACQ_baseline_score_mean + Any_severe_attack_previous_12m_0no_1yes + Treatment_step + offset(Follow_up_duration_days) + as.factor(Enrolled_Trial_name)))
+fit <- with(data=imp_data_ORACLE_final_20240416, exp=glm.nb(Number_severe_asthma_attacks_during_followup ~ FEV1_PCT_reversibility_postBD +  ACQ_baseline_score_mean + Any_severe_attack_previous_12m_0no_1yes + Treatment_step + offset(Follow_up_duration_days) + as.factor(Enrolled_Trial_name)))
 
 summary(pool(fit))
 summary.fit <- summary(pool(fit))
@@ -3146,6 +3282,20 @@ colnames(pool.OR) <- (c("RR", "95% LO", "95% UP"))
 pool.OR
 
 
+```
+
+
+```{r, eval = FALSE}
+# A negative binomial model was fit for the number of severe asthma attacks during follow-up as a dependent variable and FEV1/FVC ratio as independent variable, adjusted for the core clinical set, offset follow-up duration and trial as factor variable. Rubin's rules were applied.
+
+res_comb = NULL 
+
+for(i in 1:10){
+     res_comb[[i]] = glm.nb(Number_severe_asthma_attacks_during_followup ~ FEV1_FVC_ratio + ACQ_baseline_score_mean + Any_severe_attack_previous_12m_0no_1yes + Treatment_step + offset(Follow_up_duration_days) + as.factor(Enrolled_Trial_name), data = subset(imp_data_ORACLE_final_COMP_NR, .imp == i))
+}
+
+res_pool <- summary(pool(res_comb), conf.int = TRUE, exp = TRUE)
+res_pool
 ```
 
 
@@ -3452,7 +3602,7 @@ pool.OR
 ```{r, eval = FALSE}
 # A negative binomial model was fit for the number of severe asthma attacks during follow-up as a dependent variable and FEV1% reversibility as independent variable, adjusted for the core clinical set, biomarkers BEC and FeNO, offset follow-up duration and trial as factor variable. Rubin's rules were applied.
 
-fit <- with(data=imp_data_ORACLE_final_20240416, exp=glm.nb(Number_severe_asthma_attacks_during_followup ~ FEV1_PCT_reversibility_postBD + FEV1_preBD_PCT_Baseline + ACQ_baseline_score_mean +  Any_severe_attack_previous_12m_0no_1yes + Treatment_step + FeNO_baseline_ppb + Blood_Eos_baseline_x10_9_cells_per_L_zeroreplaced + offset(Follow_up_duration_days) + as.factor(Enrolled_Trial_name)))
+fit <- with(data=imp_data_ORACLE_final_20240416, exp=glm.nb(Number_severe_asthma_attacks_during_followup ~ FEV1_PCT_reversibility_postBD + ACQ_baseline_score_mean +  Any_severe_attack_previous_12m_0no_1yes + Treatment_step + FeNO_baseline_ppb + Blood_Eos_baseline_x10_9_cells_per_L_zeroreplaced + offset(Follow_up_duration_days) + as.factor(Enrolled_Trial_name)))
 
 summary(pool(fit))
 summary.fit <- summary(pool(fit))
@@ -3461,6 +3611,19 @@ pool.OR <- exp(cbind(summary.fit[,2], (summary.fit[,2]-1.96*(summary.fit[,3])),
            (summary.fit[,2]+1.96*(summary.fit[,3]))))
 colnames(pool.OR) <- (c("RR", "95% LO", "95% UP"))
 pool.OR
+```
+
+```{r, eval = FALSE}
+# A negative binomial model was fit for the number of severe asthma attacks during follow-up as a dependent variable and FEV1/FVC ratio as independent variable, adjusted for the core clinical set, biomarkers BEC and FeNO, offset follow-up duration and trial as factor variable. Rubin's rules were applied.
+
+res_comb = NULL 
+
+for(i in 1:10){
+     res_comb[[i]] = glm.nb(Number_severe_asthma_attacks_during_followup ~ FEV1_FVC_ratio + ACQ_baseline_score_mean +  Any_severe_attack_previous_12m_0no_1yes + Treatment_step + FeNO_baseline_ppb + Blood_Eos_baseline_x10_9_cells_per_L_zeroreplaced + offset(Follow_up_duration_days) + as.factor(Enrolled_Trial_name), data = subset(imp_data_ORACLE_final_COMP_NR, .imp == i))
+}
+
+res_pool <- summary(pool(res_comb), conf.int = TRUE, exp = TRUE)
+res_pool
 ```
 
 
@@ -3493,11 +3656,63 @@ colnames(pool.OR) <- (c("RR", "95% LO", "95% UP"))
 pool.OR
 ```
 
+# Percentile linear effect FeNO BEC (07-10-2024)
+
+```{r}
+# Make a subset of data with BEC 0.14-0.42
+
+subset_BEC <- 
+  subset(imp_data_ORACLE_final_COMP_NR, BEC >= 0.14 & BEC < 0.42)
+
+subset_BEC2 <- 
+  subset(imp_data_ORACLE_final_COMP_NR, BEC < 0.14 | BEC >= 0.42)
+
+subset_BEC <- subset_BEC %>%
+  mutate(BEC_10 = BEC * 10)
+
+subset_BEC2 <- subset_BEC2 %>%
+  mutate(BEC_10 = BEC * 10)
+```
+
+
+```{r, eval = FALSE}
+# A negative binomial model was fit for the number of severe asthma attacks during follow-up as a dependent variable and BEC subset (non-parametric) as independent variable, adjusted for the core clinical set, biomarker FeNO, offset follow-up duration and trial as factor variable. Rubin's rules were applied.
+
+res_comb = NULL 
+
+for(i in 1:10){
+     res_comb[[i]] = glm.nb(Number_severe_asthma_attacks_during_followup ~ BEC_10 + ACQ_baseline_score_mean + Any_severe_attack_previous_12m_0no_1yes + FEV1_preBD_PCT_Baseline + Treatment_step + FeNO_baseline_ppb + offset(Follow_up_duration_days) + as.factor(Enrolled_Trial_name), data = subset(subset_BEC2, .imp == i)) # fit a model per imputed dataset
+}
+
+res_pool <- summary(pool(res_comb), conf.int = TRUE, exp = TRUE) # pool the estimates of the results of 10 imputed data sets
+res_pool
+```
+```{r}
+# Make a subset of data with FeNO 14-42
+
+subset_FeNO <- 
+  subset(imp_data_ORACLE_final_COMP_NR, FeNO >= 14 & FeNO < 42)
+```
+
+```{r, eval = FALSE}
+# A negative binomial model was fit for the number of severe asthma attacks during follow-up as a dependent variable and FeNO subset (non-parametric) as independent variable, adjusted for the core clinical set, biomarker BEC, offset follow-up duration and trial as factor variable. Rubin's rules were applied.
+
+res_comb = NULL 
+
+for(i in 1:10){
+     res_comb[[i]] = glm.nb(Number_severe_asthma_attacks_during_followup ~ FeNO + ACQ_baseline_score_mean + Any_severe_attack_previous_12m_0no_1yes + FEV1_preBD_PCT_Baseline + Treatment_step + Blood_Eos_baseline_x10_9_cells_per_L_zeroreplaced + offset(Follow_up_duration_days) + as.factor(Enrolled_Trial_name), data = subset(subset_FeNO, .imp == i)) # fit a model per imputed dataset
+}
+
+res_pool <- summary(pool(res_comb), conf.int = TRUE, exp = TRUE) # pool the estimates of the results of 10 imputed data sets
+res_pool
+```
+
+
 
 ```{r, eval = FALSE}
 # A negative binomial model was fit for the number of severe asthma attacks during follow-up as a dependent variable and FeNO as independent variable, adjusted for the core clinical set, biomarker BEC, offset follow-up duration and trial as factor variable. Rubin's rules were applied.
 
-fit <- with(data=imp_data_ORACLE_final_20240416, exp=glm.nb(Number_severe_asthma_attacks_during_followup ~ FeNO_baseline_ppb + ACQ_baseline_score_mean + Any_severe_attack_previous_12m_0no_1yes + FEV1_preBD_PCT_Baseline + Treatment_step + Blood_Eos_baseline_x10_9_cells_per_L_zeroreplaced + offset(Follow_up_duration_days) + as.factor(Enrolled_Trial_name)))
+fit <- with(data=imp_data_ORACLE_final_20241002, exp=glm.nb(Number_severe_asthma_attacks_during_followup ~ FeNO_baseline_ppb + ACQ_baseline_score_mean + Any_severe_attack_previous_12m_0no_1yes + FEV1_preBD_PCT_Baseline + Treatment_step + Blood_Eos_baseline_x10_9_cells_per_L_zeroreplaced + offset(Follow_up_duration_days) + as.factor(Enrolled_Trial_name)))
 
 summary(pool(fit))
 summary.fit <- summary(pool(fit))
@@ -3524,7 +3739,7 @@ pool.OR
 ```
 
 
-# Forest plots
+# Forest plots (forester package June 2024)
 
 ```{r, eval = FALSE}
 # The forest plots were created using the forester package from Github
@@ -3587,6 +3802,245 @@ forester(
   null_line_at = 1
 )
 
+```
+
+
+# Forest plots (forestplot package Oct 2024)
+
+```{r}
+data_uni <- suppressWarnings(read_excel("20240919 Negative binomial models m=10.xlsx", sheet = "Uni"))
+```
+
+```{r}
+install.packages("forestplot")
+library(forestplot)
+```
+
+```{r}
+ticks <- c(0.01, 0.1, 0.3, 1, 3)
+attr(ticks, "labels") <- as.character(ticks)
+
+data_uni |>
+  forestplot(labeltext = c(Variable, RR, low, up),
+             clip = c(0.01, 3),
+             ci.vertices = TRUE,
+             boxsize = 0.3,
+             xlog = TRUE,
+             xticks.digits = 1) |>
+  fp_add_lines(h_3 = gpar(lty = 2)) |>
+  fp_set_style(box = "darkblue",
+               line = "darkblue")|>
+  fp_add_header(Variable =  c("", "Variable"),
+                RR = c("", "Rate ratio"),
+                low = c( "95%CI", "lower") |> 
+                  fp_align_center(),
+                up = c( "95%CI", "upper") |> 
+                  fp_align_center()) |>
+  fp_decorate_graph(graph.pos = 2) |>
+  fp_set_zebra_style("#EFEFEF")
+  
+```
+
+# Forest plots (forestploter package Oct 2024)
+
+```{r}
+#install.packages("devtools")
+#devtools::install_github("adayim/forestploter")
+library(forestploter)
+```
+
+```{r}
+data_uni <- suppressWarnings(read_excel("20240919 Negative binomial models m=10.xlsx", sheet = "All"))
+data_uni <- data_uni[c(25,26,8,4:7,21,24,23,1:3,9:20,22,27),]
+```
+
+
+```{r}
+# Define theme
+tm <- forest_theme(base_size = 10,
+                   refline_col = "red",
+                   arrow_type = "closed",
+                   footnote_gp = gpar(col = "black", cex = 0.8),
+                   ci_lwd = 1.6)
+
+# Add a blank column for the forest plot to display CI.
+# Adjust the column width with space.
+data_uni$` ` <- paste(rep(" ", 40), collapse = " ")  # empty column
+
+data_uni$se_uni <- (log(data_uni$upper_uni) - log(data_uni$mean_uni))/1.96
+data_uni$se_multi <- (log(data_uni$upper_multi) - log(data_uni$mean_multi))/1.96
+
+# Create confidence interval column to display
+data_uni$`Rate ratio (95% CI) model 1` <- ifelse(is.na(data_uni$se_uni), "",
+                             sprintf("%.2f (%.2f to %.2f)",
+                                     data_uni$mean_uni, data_uni$lower_uni, data_uni$upper_uni))
+
+# Create confidence interval column to display
+data_uni$`Rate ratio (95% CI) model 2` <- ifelse(is.na(data_uni$se_multi), "",
+                             sprintf("%.2f (%.2f to %.2f)",
+                                     data_uni$mean_multi, data_uni$lower_multi, data_uni$upper_multi))
+
+# Make the plot
+
+# Basic plot
+p <-
+  forest(data_uni[,c(1,8,11,8,12)],
+         est = list(data_uni$mean_uni, data_uni$mean_multi),
+         lower = list(data_uni$lower_uni, data_uni$lower_multi),
+         upper = list(data_uni$upper_uni, data_uni$upper_multi),
+         sizes = 0.7,
+         ci_column = c(2,4),
+         ref_line = 1,
+         xlim = c(0.03, 3),
+         ticks_digits = 2,
+         ticks_at = c(0.03, 0.1, 0.3, 1, 3),
+         x_trans = "log10",
+         footnote = "\n\n* Dichotomous variable (yes/no)\n** Per 10-fold increase",
+         arrow_lab = c("Lower risk", "Higher risk"),
+         theme = tm
+         )
+
+# Create a placeholder string
+placeholder <- paste(rep(" ", 103), collapse = "")  # Adjust the number of spaces
+placeholder2 <- paste(rep(" ", 87), collapse = "")  # Adjust the number of spaces
+
+# Combine with the original texts
+combined_text <- paste("Main variables", placeholder, "Univariable", placeholder2, "Multivariable")
+
+# Edit plot
+g <- add_border(p, part = "header", row = 1, where = "top")
+g <- add_border(g, part = "header", row = 1, where = "bottom")
+g <- insert_text(g,
+                 text = combined_text,
+                 row = 1,
+                 just = "left",
+                 gp = gpar(cex = 1, col = "darkblue", fontface = "bold.italic"))
+g <- insert_text(g,
+                 text = "\nOther variables explored",
+                 row = 11,
+                 just = "left",
+                 gp = gpar(cex = 1, col = "darkblue", fontface = "bold.italic"))
+
+# Save the plot to files
+pdf(file = "20241009 Forest Plot New Version with forestploter v2.pdf", width = 15, height = 10)
+plot(g)
+dev.off()
+```
+
+
+```{r}
+# Forest plot percentiles Frank Harrell
+data_perc <- suppressWarnings(read_excel("20241004 Negative binomial models m=10 standardized 25-75 percentile.xlsx", sheet = "All"))
+data_perc <- data_perc[c(25,26,4:8,21,24,23,1:3,9:20,22,27),]
+```
+
+```{r}
+# Define theme
+tm <- forest_theme(base_size = 10,
+                   refline_col = "red",
+                   arrow_type = "closed",
+                   footnote_gp = gpar(col = "black", cex = 0.8),
+                   ci_lwd = 1.6)
+
+# Add a blank column for the forest plot to display CI.
+# Adjust the column width with space.
+data_perc$` ` <- paste(rep(" ", 40), collapse = " ")  # empty column
+
+data_perc$se <- (log(data_perc$upper_multi) - log(data_perc$mean_multi))/1.96
+
+
+# Create confidence interval column to display
+data_perc$`Rate ratio (95% CI) model 2` <- ifelse(is.na(data_perc$se), "",
+                             sprintf("%.2f (%.2f to %.2f)",
+                                     data_perc$mean_multi, data_perc$lower_multi, data_perc$upper_multi))
+
+# Make the plot
+
+p <-
+  forest(data_perc[,c(1,8,10)],
+         est = data_perc$mean_multi,
+         lower = data_perc$lower_multi,
+         upper = data_perc$upper_multi,
+         sizes = 0.5,
+         ci_column = 2,
+         ref_line = 1,
+         xlim = c(0.03, 3),
+         ticks_digits = 2,
+         ticks_at = c(0.03, 0.1, 0.3, 1, 3),
+         x_trans = "log10",
+         footnote = "\n* Dichotomous variable (yes/no)",
+         arrow_lab = c("Lower risk", "Higher risk"),
+         theme = tm
+         )
+
+# Create a placeholder string
+placeholder <- paste(rep(" ", 100), collapse = "")  # Adjust the number of spaces
+
+# Combine with the original texts
+combined_text <- paste("Main variables", placeholder, "Multivariable")
+
+g <- add_border(p, part = "header", row = 1, where = "top")
+g <- add_border(g, part = "header", row = 1, where = "bottom")
+g <- insert_text(g,
+                 text = combined_text,
+                 row = 1,
+                 just = "left",
+                 gp = gpar(cex = 1, col = "darkblue", fontface = "bold.italic"))
+g <- insert_text(g,
+                 text = "\nOther variables explored",
+                 row = 11,
+                 just = "left",
+                 gp = gpar(cex = 1, col = "darkblue", fontface = "bold.italic"))
+
+# Save the plot to files
+pdf(file = "20241004 Forest Plot PERCENTILES New Version with forestploter v2.pdf", width = 15, height = 10)
+plot(g)
+dev.off()
+```
+
+
+```{r}
+# Forest plot percentiles with only the biomarkers
+
+# Make a smaller dataset
+data_perc_bm <- data_perc[c(1,2),]
+
+# Make the plot
+p <-
+  forest(data_perc_bm[,c(1,8,10)],
+         est = data_perc_bm$mean_multi,
+         lower = data_perc_bm$lower_multi,
+         upper = data_perc_bm$upper_multi,
+         sizes = 0.5,
+         ci_column = 2,
+         ref_line = 1,
+         xlim = c(0.03, 3),
+         ticks_digits = 2,
+         ticks_at = c(0.03, 0.1, 0.3, 1, 3),
+         x_trans = "log10",
+         #footnote = "\n* Dichotomous variable (yes/no)",
+         arrow_lab = c("Lower risk", "Higher risk"),
+         theme = tm
+         )
+
+# Create a placeholder string
+placeholder <- paste(rep(" ", 90), collapse = "")  # Adjust the number of spaces
+
+# Combine with the original texts
+combined_text <- paste("Biomarkers", placeholder, "Multivariable")
+
+g <- add_border(p, part = "header", row = 1, where = "top")
+g <- add_border(g, part = "header", row = 1, where = "bottom")
+g <- insert_text(g,
+                 text = combined_text,
+                 row = 1,
+                 just = "left",
+                 gp = gpar(cex = 1, col = "darkblue", fontface = "bold.italic"))
+
+# Save the plot to files
+pdf(file = "20241007 Forest Plot PERCENTILES ONLY BM New Version with forestploter v5.pdf", width = 15, height = 10)
+plot(g)
+dev.off()
 ```
 
 
@@ -4235,7 +4689,7 @@ mean(null_model_R2)
 ```
 
 
-# ORACLE 3x3 Table
+# ORACLE biomarkers 3x3 Table
 
 ```{r, eval = FALSE}
 # Create a dummy variable per FeNO-BEC combination (low, mid, high)
@@ -4557,6 +5011,758 @@ nrow(filter(imp_data_ORACLE_final_COMP_NR, FeNO_high_Eos_high == 1))
 ```
 
 
+
+# ORACLE biomarkers 2x2 Table
+
+```{r}
+# Create a dummy variable for FeNO and BEC groups
+imp_data_ORACLE_final_COMP_NR <-
+  imp_data_ORACLE_final_COMP_NR %>%
+  mutate(BEC = 10^Blood_Eos_baseline_x10_9_cells_per_L_zeroreplaced)
+
+imp_data_ORACLE_final_COMP_NR <-
+  imp_data_ORACLE_final_COMP_NR %>%
+  mutate(FeNO = 10^FeNO_baseline_ppb)
+
+imp_data_ORACLE_final_COMP_NR <-
+  imp_data_ORACLE_final_COMP_NR %>%
+  mutate(FeNO_25cutoff =
+           case_when(FeNO < 25 ~ 0,
+                     FeNO >= 25 ~ 1))
+
+imp_data_ORACLE_final_COMP_NR <-
+  imp_data_ORACLE_final_COMP_NR %>%
+  mutate(BEC_15cutoff =
+           case_when(BEC < 0.15 ~ 0,
+                     BEC >= 0.15 ~ 1))
+
+imp_data_ORACLE_final_COMP_NR$FeNO_25cutoff <- as.factor(imp_data_ORACLE_final_COMP_NR$FeNO_25cutoff)
+imp_data_ORACLE_final_COMP_NR$BEC_15cutoff <- as.factor(imp_data_ORACLE_final_COMP_NR$BEC_15cutoff)
+```
+
+```{r}
+# Check the distribution of patients over the groups
+
+# Create a table with temporary labels for FeNO and BEC
+combination_table <- table(
+  factor(imp_data_ORACLE_final_COMP_NR$FeNO_25cutoff, 
+         levels = c(0, 1), 
+         labels = c("<25", ">=25")),
+  
+  factor(imp_data_ORACLE_final_COMP_NR$BEC_15cutoff, 
+         levels = c(0, 1), 
+         labels = c("<0.15", ">=0.15"))
+)
+
+# Print the table with temporary labels
+print(combination_table)
+```
+
+
+```{r}
+res_comb = NULL 
+
+for(i in 1:10){
+     res_comb[[i]] = glm.nb(Number_severe_asthma_attacks_during_followup ~ (FeNO_25cutoff == 1 & BEC_15cutoff == 0) + (FeNO_25cutoff == 1 & BEC_15cutoff == 1) + (FeNO_25cutoff == 0 & BEC_15cutoff == 1)+ ACQ_baseline_score_mean + Any_severe_attack_previous_12m_0no_1yes + FEV1_preBD_PCT_Baseline + Treatment_step + offset(Follow_up_duration_days) + as.factor(Enrolled_Trial_name), data = subset(imp_data_ORACLE_final_COMP_NR, .imp == i)) # fit a model per imputed dataset
+}
+
+res_pool <- summary(pool(res_comb), conf.int = TRUE, exp = TRUE) # pool the estimates of the results of 10 imputed data sets
+res_pool
+```
+
+
+
+# ORACLE biomarkers 2x2 Table (percentiles)
+
+```{r}
+# Create a dummy variable for FeNO and BEC groups
+imp_data_ORACLE_final_COMP_NR <-
+  imp_data_ORACLE_final_COMP_NR %>%
+  mutate(FeNO_14cutoff =
+           case_when(FeNO < 14 ~ 0,
+                     FeNO >= 14 ~ 1))
+
+imp_data_ORACLE_final_COMP_NR <-
+  imp_data_ORACLE_final_COMP_NR %>%
+  mutate(BEC_14cutoff =
+           case_when(BEC < 0.14 ~ 0,
+                     BEC >= 0.14 ~ 1))
+
+imp_data_ORACLE_final_COMP_NR$FeNO_14cutoff <- as.factor(imp_data_ORACLE_final_COMP_NR$FeNO_14cutoff)
+imp_data_ORACLE_final_COMP_NR$BEC_14cutoff <- as.factor(imp_data_ORACLE_final_COMP_NR$BEC_14cutoff)
+```
+
+```{r}
+# Check the distribution of patients over the groups
+
+# Create a table with temporary labels for FeNo and BEC
+combination_table <- table(
+  factor(imp_data_ORACLE_final_COMP_NR$FeNO_14cutoff, 
+         levels = c(0, 1), 
+         labels = c("<14", ">=14")),
+  
+  factor(imp_data_ORACLE_final_COMP_NR$BEC_14cutoff, 
+         levels = c(0, 1), 
+         labels = c("<0.14", ">=0.14"))
+)
+
+# Print the table with temporary labels
+print(combination_table)
+```
+
+
+```{r}
+res_comb = NULL 
+
+for(i in 1:10){
+     res_comb[[i]] = glm.nb(Number_severe_asthma_attacks_during_followup ~ (FeNO_14cutoff == 1 & BEC_14cutoff == 0) + (FeNO_14cutoff == 1 & BEC_14cutoff == 1) + (FeNO_14cutoff == 0 & BEC_14cutoff == 1)+ ACQ_baseline_score_mean + Any_severe_attack_previous_12m_0no_1yes + FEV1_preBD_PCT_Baseline + Treatment_step + offset(Follow_up_duration_days) + as.factor(Enrolled_Trial_name), data = subset(imp_data_ORACLE_final_COMP_NR, .imp == i)) # fit a model per imputed dataset
+}
+
+res_pool <- summary(pool(res_comb), conf.int = TRUE, exp = TRUE) # pool the estimates of the results of 10 imputed data sets
+res_pool
+```
+
+# ORACLE biomarkers 2x1 Table 
+
+```{r}
+# Create a dummy variable for FeNO and BEC groups
+imp_data_ORACLE_final_COMP_NR <-
+  imp_data_ORACLE_final_COMP_NR %>%
+  mutate(BEC = 10^Blood_Eos_baseline_x10_9_cells_per_L_zeroreplaced)
+
+imp_data_ORACLE_final_COMP_NR <-
+  imp_data_ORACLE_final_COMP_NR %>%
+  mutate(FeNO = 10^FeNO_baseline_ppb)
+
+imp_data_ORACLE_final_COMP_NR <-
+  imp_data_ORACLE_final_COMP_NR %>%
+  mutate(FeNO_BEC_2x1 = ifelse
+         (BEC >= 0.15 & FeNO >= 25, 1, 0)
+         )
+imp_data_ORACLE_final_COMP_NR$FeNO_BEC_2x1 <- as.factor(imp_data_ORACLE_final_COMP_NR$FeNO_BEC_2x1)
+
+```
+
+
+```{r}
+# Check the distribution in the data
+table(imp_data_ORACLE_final_COMP_NR$FeNO_BEC_2x1)
+```
+
+
+```{r}
+res_comb = NULL 
+
+for(i in 1:10){
+     res_comb[[i]] = glm.nb(Number_severe_asthma_attacks_during_followup ~ FeNO_BEC_2x1 + ACQ_baseline_score_mean + Any_severe_attack_previous_12m_0no_1yes + FEV1_preBD_PCT_Baseline + Treatment_step + offset(Follow_up_duration_days) + as.factor(Enrolled_Trial_name), data = subset(imp_data_ORACLE_final_COMP_NR, .imp == i)) # fit a model per imputed dataset
+}
+
+res_pool <- summary(pool(res_comb), conf.int = TRUE, exp = TRUE) # pool the estimates of the results of 10 imputed data sets
+res_pool
+```
+
+# ORACLE biomarkers 2x1 Table version 2 (07-10-2024)
+
+```{r}
+# Create a dummy variable for FeNO and BEC groups
+imp_data_ORACLE_final_COMP_NR <-
+  imp_data_ORACLE_final_COMP_NR %>%
+  mutate(BEC = 10^Blood_Eos_baseline_x10_9_cells_per_L_zeroreplaced)
+
+imp_data_ORACLE_final_COMP_NR <-
+  imp_data_ORACLE_final_COMP_NR %>%
+  mutate(FeNO = 10^FeNO_baseline_ppb)
+
+imp_data_ORACLE_final_COMP_NR <-
+  imp_data_ORACLE_final_COMP_NR %>%
+  mutate(FeNO_BEC_2x1_v2 = ifelse
+         (BEC < 0.15 & FeNO < 25, 0, 1)
+         )
+imp_data_ORACLE_final_COMP_NR$FeNO_BEC_2x1_v2 <- as.factor(imp_data_ORACLE_final_COMP_NR$FeNO_BEC_2x1_v2)
+
+```
+
+```{r}
+# Check the distribution in the data
+table(imp_data_ORACLE_final_COMP_NR$FeNO_BEC_2x1_v2)
+```
+
+
+```{r}
+res_comb = NULL 
+
+for(i in 1:10){
+     res_comb[[i]] = glm.nb(Number_severe_asthma_attacks_during_followup ~ FeNO_BEC_2x1_v2 + ACQ_baseline_score_mean + Any_severe_attack_previous_12m_0no_1yes + FEV1_preBD_PCT_Baseline + Treatment_step + offset(Follow_up_duration_days) + as.factor(Enrolled_Trial_name), data = subset(imp_data_ORACLE_final_COMP_NR, .imp == i)) # fit a model per imputed dataset
+}
+
+res_pool <- summary(pool(res_comb), conf.int = TRUE, exp = TRUE) # pool the estimates of the results of 10 imputed data sets
+res_pool
+```
+
+
+# Percentile estimate for biomarkers (07-10-2024)
+
+```{r}
+res_comb = NULL 
+
+for(i in 1:10){
+     res_comb[[i]] = glm.nb(Number_severe_asthma_attacks_during_followup ~ FeNO_p + Blood_Eos_baseline_x10_9_cells_per_L_zeroreplaced + ACQ_baseline_score_mean + Any_severe_attack_previous_12m_0no_1yes + FEV1_preBD_PCT_Baseline + Treatment_step + offset(Follow_up_duration_days) + as.factor(Enrolled_Trial_name), data = subset(imp_data_ORACLE_final_COMP_NR, .imp == i)) # fit a model per imputed dataset
+}
+
+res_pool <- summary(pool(res_comb), conf.int = TRUE, exp = TRUE) # pool the estimates of the results of 10 imputed data sets
+res_pool
+```
+
+```{r}
+res_comb = NULL 
+
+for(i in 1:10){
+     res_comb[[i]] = glm.nb(Number_severe_asthma_attacks_during_followup ~ BEC_p + FeNO_baseline_ppb + ACQ_baseline_score_mean + Any_severe_attack_previous_12m_0no_1yes + FEV1_preBD_PCT_Baseline + Treatment_step + offset(Follow_up_duration_days) + as.factor(Enrolled_Trial_name), data = subset(imp_data_ORACLE_final_COMP_NR, .imp == i)) # fit a model per imputed dataset
+}
+
+res_pool <- summary(pool(res_comb), conf.int = TRUE, exp = TRUE) # pool the estimates of the results of 10 imputed data sets
+res_pool
+```
+
+```{r}
+res_comb = NULL 
+
+for(i in 1:10){
+     res_comb[[i]] = glm.nb(Number_severe_asthma_attacks_during_followup ~ IgE_p + Blood_Eos_baseline_x10_9_cells_per_L_zeroreplaced+ FeNO_baseline_ppb + ACQ_baseline_score_mean + Any_severe_attack_previous_12m_0no_1yes + FEV1_preBD_PCT_Baseline + Treatment_step + offset(Follow_up_duration_days) + as.factor(Enrolled_Trial_name), data = subset(imp_data_ORACLE_final_COMP_NR, .imp == i)) # fit a model per imputed dataset
+}
+
+res_pool <- summary(pool(res_comb), conf.int = TRUE, exp = TRUE) # pool the estimates of the results of 10 imputed data sets
+res_pool
+```
+
+# FEV1% pre-post reversibility 3x3 Table
+
+```{r, eval = FALSE}
+# Check the distribution of the FEV1_preBD_L_Baseline in the dataset
+
+# Initialize a list to store the results
+results <- list()
+
+# Loop over each imputed dataset (with .imp values from 1 to 10)
+for (i in 1:10) {
+  # Filter the data for the current imputation
+  imputed_data <- imp_data_ORACLE_final_COMP_NR %>% filter(.imp == i)
+  
+  # Calculate summary statistics for FEV1_preBD_L_Baseline
+  stats <- imputed_data %>%
+    summarise(
+      mean = mean(FEV1_preBD_L_Baseline, na.rm = TRUE),
+      min = min(FEV1_preBD_L_Baseline, na.rm = TRUE),
+      max = max(FEV1_preBD_L_Baseline, na.rm = TRUE),
+      sd = sd(FEV1_preBD_L_Baseline, na.rm = TRUE),
+      n = n()
+    )
+  
+  # Store the result in the list
+  results[[paste0("Imputation_", i)]] <- stats
+}
+
+# Combine the results into a data frame for easy viewing
+results_df <- bind_rows(results, .id = "Imputation")
+
+# Print the results
+print(results_df)
+
+# Make a histogram
+hist(imp_data_ORACLE_final_COMP_NR$FEV1_preBD_L_Baseline)
+```
+
+```{r, eval = FALSE}
+# Check the distribution of the FEV1_postBD_L_Baseline in the dataset
+
+# Initialize a list to store the results
+results <- list()
+
+# Loop over each imputed dataset (with .imp values from 1 to 10)
+for (i in 1:10) {
+  # Filter the data for the current imputation
+  imputed_data <- imp_data_ORACLE_final_COMP_NR %>% filter(.imp == i)
+  
+  # Calculate summary statistics for FEV1_postBD_L_Baseline
+  stats <- imputed_data %>%
+    summarise(
+      mean = mean(FEV1_postBD_L_Baseline, na.rm = TRUE),
+      min = min(FEV1_postBD_L_Baseline, na.rm = TRUE),
+      max = max(FEV1_postBD_L_Baseline, na.rm = TRUE),
+      sd = sd(FEV1_postBD_L_Baseline, na.rm = TRUE),
+      n = n()
+    )
+  
+  # Store the result in the list
+  results[[paste0("Imputation_", i)]] <- stats
+}
+
+# Combine the results into a data frame for easy viewing
+results_df <- bind_rows(results, .id = "Imputation")
+
+# Print the results
+print(results_df)
+
+# Make a histogram
+hist(imp_data_ORACLE_final_COMP_NR$FEV1_postBD_L_Baseline)
+```
+
+
+
+```{r, eval = FALSE}
+# Check the distribution of the FEV1_postBD_PCT_Baseline in the dataset
+
+# Initialize a list to store the results
+results <- list()
+
+# Loop over each imputed dataset (with .imp values from 1 to 10)
+for (i in 1:10) {
+  # Filter the data for the current imputation
+  imputed_data <- imp_data_ORACLE_final_COMP_NR %>% filter(.imp == i)
+  
+  # Calculate summary statistics for FEV1_postBD_PCT_Baseline
+  stats <- imputed_data %>%
+    summarise(
+      mean = mean(FEV1_postBD_PCT_Baseline, na.rm = TRUE),
+      min = min(FEV1_postBD_PCT_Baseline, na.rm = TRUE),
+      max = max(FEV1_postBD_PCT_Baseline, na.rm = TRUE),
+      sd = sd(FEV1_postBD_PCT_Baseline, na.rm = TRUE),
+      n = n()
+    )
+  
+  # Store the result in the list
+  results[[paste0("Imputation_", i)]] <- stats
+}
+
+# Combine the results into a data frame for easy viewing
+results_df <- bind_rows(results, .id = "Imputation")
+
+# Print the results
+print(results_df)
+
+# Make a histogram
+hist(imp_data_ORACLE_final_COMP_NR$FEV1_postBD_PCT_Baseline)
+```
+
+```{r, eval = FALSE}
+# Check the distribution of the FEV1_preBD_PCT_Baseline in the dataset
+
+# Initialize a list to store the results
+results <- list()
+
+# Loop over each imputed dataset (with .imp values from 1 to 10)
+for (i in 1:10) {
+  # Filter the data for the current imputation
+  imputed_data <- imp_data_ORACLE_final_COMP_NR %>% filter(.imp == i)
+  
+  # Calculate summary statistics for FEV1_preBD_PCT_Baseline
+  stats <- imputed_data %>%
+    summarise(
+      mean = mean(FEV1_preBD_PCT_Baseline, na.rm = TRUE),
+      min = min(FEV1_preBD_PCT_Baseline, na.rm = TRUE),
+      max = max(FEV1_preBD_PCT_Baseline, na.rm = TRUE),
+      sd = sd(FEV1_preBD_PCT_Baseline, na.rm = TRUE),
+      n = n()
+    )
+  
+  # Store the result in the list
+  results[[paste0("Imputation_", i)]] <- stats
+}
+
+# Combine the results into a data frame for easy viewing
+results_df <- bind_rows(results, .id = "Imputation")
+
+# Print the results
+print(results_df)
+
+# Make a histogram
+hist(imp_data_ORACLE_final_COMP_NR$FEV1_preBD_PCT_Baseline)
+```
+
+```{r}
+# Calculate the FEV1 post BD in liters from the % predicted in the dataset
+
+## Calculate the predicted liters of lung volume based on the data you have
+## e.g. if 1.6L = 72.19%, then what L is 100%?
+imp_data_ORACLE_final_COMP_NR <-
+  imp_data_ORACLE_final_COMP_NR %>%
+  mutate(FEV1_Lpred_COMPUTED = 
+           (100*FEV1_preBD_L_Baseline) / FEV1_preBD_PCT_Baseline)
+
+## Calculate the FEV1 postBD in liters
+imp_data_ORACLE_final_COMP_NR <-
+  imp_data_ORACLE_final_COMP_NR %>%
+  mutate(FEV1_postBD_L_COMPUTED =
+           FEV1_Lpred_COMPUTED * (FEV1_postBD_PCT_Baseline / 100))
+
+```
+
+
+```{r}
+# Check calculated reversibility vs. imputed reversibility in 1 imputed dataset
+subset_check <- subset(imp_data_ORACLE_final_COMP_NR, .imp == 1)
+
+subset_check <-
+  subset_check %>%
+  mutate(Reversibility_COMPUTED =
+           100 * ((FEV1_postBD_L_COMPUTED - FEV1_preBD_L_Baseline) / FEV1_preBD_L_Baseline)
+         )
+
+# Create overlapping histograms
+ggplot(subset_check) +
+  geom_histogram(aes(x = Reversibility_COMPUTED, fill = "Computed"), 
+                 alpha = 0.5, position = "identity", bins = 30) +  # Histogram for var1
+  geom_histogram(aes(x = FEV1_PCT_reversibility_postBD, fill = "Imputed"), 
+                 alpha = 0.5, position = "identity", bins = 30) +  # Histogram for var2
+  scale_fill_manual(values = c("Computed" = "blue", "Imputed" = "red")) +  # Colors for histograms
+  labs(title = "Overlapping Histograms of Reversibility", x = "Percentage (%)", y = "Frequency") +  # Labels
+  theme_minimal()  # Theme for a clean look
+
+cor(subset_check$Reversibility_COMPUTED, subset_check$FEV1_PCT_reversibility_postBD)
+```
+
+
+```{r, eval = FALSE}
+# Create dummy variable for the 3x3 Table: 60, 80
+
+imp_data_ORACLE_final_COMP_NR <- imp_data_ORACLE_final_COMP_NR %>%
+  mutate(FEV1_preBD_PCT_Group6080 = case_when(
+    FEV1_preBD_PCT_Baseline < 60 ~ 0,
+    FEV1_preBD_PCT_Baseline >= 60 & FEV1_preBD_PCT_Baseline < 80 ~ 1,
+    TRUE ~ 2
+  ))
+
+imp_data_ORACLE_final_COMP_NR %>%
+  count(FEV1_preBD_PCT_Group6080)
+
+imp_data_ORACLE_final_COMP_NR <- imp_data_ORACLE_final_COMP_NR %>%
+  mutate(FEV1_postBD_PCT_Group6080 = case_when(
+    FEV1_postBD_PCT_Baseline < 60 ~ 0,
+    FEV1_postBD_PCT_Baseline >= 60 & FEV1_postBD_PCT_Baseline < 80 ~ 1,
+    TRUE ~ 2
+  ))
+
+imp_data_ORACLE_final_COMP_NR %>%
+  count(FEV1_postBD_PCT_Group6080)
+```
+
+
+```{r, eval = FALSE}
+# Create dummy variable for the 3x3 Table: 70, 80
+
+imp_data_ORACLE_final_COMP_NR <- imp_data_ORACLE_final_COMP_NR %>%
+  mutate(FEV1_preBD_PCT_Group7080 = case_when(
+    FEV1_preBD_PCT_Baseline < 70 ~ 0,
+    FEV1_preBD_PCT_Baseline >= 70 & FEV1_preBD_PCT_Baseline < 80 ~ 1,
+    TRUE ~ 2
+  ))
+
+imp_data_ORACLE_final_COMP_NR %>%
+  count(FEV1_preBD_PCT_Group7080)
+
+imp_data_ORACLE_final_COMP_NR <- imp_data_ORACLE_final_COMP_NR %>%
+  mutate(FEV1_postBD_PCT_Group7080 = case_when(
+    FEV1_postBD_PCT_Baseline < 70 ~ 0,
+    FEV1_postBD_PCT_Baseline >= 70 & FEV1_postBD_PCT_Baseline < 80 ~ 1,
+    TRUE ~ 2
+  ))
+
+imp_data_ORACLE_final_COMP_NR %>%
+  count(FEV1_postBD_PCT_Group7080)
+```
+
+```{r, eval = FALSE}
+# Fit a negative binomial model per imputed dataset with all the main predictors, except for FEV1 %, and store the estimates in a list
+
+res_comb = NULL 
+
+for(i in 1:10){
+     res_comb[[i]] = glm.nb(Number_severe_asthma_attacks_during_followup ~ ACQ_baseline_score_mean + Any_severe_attack_previous_12m_0no_1yes + Treatment_step + Blood_Eos_baseline_x10_9_cells_per_L_zeroreplaced + FeNO_baseline_ppb + offset(Follow_up_duration_days) + as.factor(Enrolled_Trial_name), data = subset(imp_data_ORACLE_final_COMP_NR, .imp == i))
+}
+```
+
+```{r, eval = FALSE}
+# Take the linear predictors from the negative binomial model fit above
+
+linear_predictors_list <- list() # create a list
+
+# Loop through each imputed dataset
+for (i in 1:length(res_comb)) {
+  # Extract the linear.predictors from the glm.nb model in the current dataset
+  linear_predictors <- res_comb[[i]]$linear.predictors
+  
+  # Append the linear predictors to the list
+  linear_predictors_list[[i]] <- linear_predictors
+}
+
+all_linear_predictors <- unlist(linear_predictors_list)
+
+linear_predictors_df_fev1 <- data.frame(linear_predictors = all_linear_predictors)
+
+```
+
+```{r, eval = FALSE}
+# Check a subset of the original and resulting data
+
+print(res_comb[[1]]$linear.predictors[1:5])
+print(res_comb[[2]]$linear.predictors[1:5])
+print(all_linear_predictors[1:5])
+print(all_linear_predictors[6514:6518])
+```
+
+```{r, eval = FALSE}
+# Merge the linear predictors with the original dataset
+
+imp_data_ORACLE_final_COMP_NR <- cbind(imp_data_ORACLE_final_COMP_NR, linear_predictors_df_fev1)
+```
+
+```{r, eval = FALSE}
+# Check if the merging was correct; [1:5] in all_linear_predictors should be the same as in the new variable "linear_predictors" in the original dataset; the same goes for [6514:6518]
+
+print(all_linear_predictors[1:5])
+print(all_linear_predictors[6514:6518])
+print(imp_data_ORACLE_final_COMP_NR$linear_predictors[1:5])
+print(imp_data_ORACLE_final_COMP_NR$linear_predictors[6514:6518])
+```
+```{r}
+# Check the number of patients per category of the 3x3 Table: 60, 80
+
+# Create a table with temporary labels for FEV1_preBD_PCT_Group and FEV1_postBD_PCT_Group
+combination_table_6080 <- table(
+  factor(imp_data_ORACLE_final_COMP_NR$FEV1_preBD_PCT_Group6080, 
+         levels = c(0, 1, 2), 
+         labels = c("preBD PCT <60", "preBD PCT 60-79", "preBD PCT >=80")),
+  
+  factor(imp_data_ORACLE_final_COMP_NR$FEV1_postBD_PCT_Group6080, 
+         levels = c(0, 1, 2), 
+         labels = c("postBD PCT <60", "postBD PCT 60-79", "postBD PCT >=80"))
+)
+
+# Print the table with temporary labels
+print(combination_table_6080)
+
+```
+```{r}
+# Check the number of patients per category of the 3x3 Table: 70, 80
+
+# Create a table with temporary labels for FEV1_preBD_PCT_Group and FEV1_postBD_PCT_Group
+combination_table_7080 <- table(
+  factor(imp_data_ORACLE_final_COMP_NR$FEV1_preBD_PCT_Group7080, 
+         levels = c(0, 1, 2), 
+         labels = c("preBD PCT <70", "preBD PCT 70-79", "preBD PCT >=80")),
+  
+  factor(imp_data_ORACLE_final_COMP_NR$FEV1_postBD_PCT_Group7080, 
+         levels = c(0, 1, 2), 
+         labels = c("postBD PCT <70", "postBD PCT 70-79", "postBD PCT >=80"))
+)
+
+# Print the table with temporary labels
+print(combination_table_7080)
+
+```
+
+```{r, eval = FALSE}
+# Fit a negative binomial model in m=10 datasets for every category of FEV1% and pool the results using the Rubin's rules
+
+res_comb = NULL 
+
+for(i in 1:10){
+     res_comb[[i]] = glm.nb(Number_severe_asthma_attacks_during_followup ~ (FEV1_preBD_PCT_Group6080 == 0 & FEV1_postBD_PCT_Group6080 == 0) + offset(linear_predictors), data = subset(imp_data_ORACLE_final_COMP_NR, .imp == i))
+}
+
+res_pool <- summary(pool(res_comb), conf.int = TRUE, exp = TRUE)
+res_pool
+```
+
+```{r, eval = FALSE}
+res_comb = NULL 
+
+for(i in 1:10){
+     res_comb[[i]] = glm.nb(Number_severe_asthma_attacks_during_followup ~ (FEV1_preBD_PCT_Group6080 == 1 & FEV1_postBD_PCT_Group6080 == 0) + offset(linear_predictors), data = subset(imp_data_ORACLE_final_COMP_NR, .imp == i))
+}
+
+res_pool <- summary(pool(res_comb), conf.int = TRUE, exp = TRUE)
+res_pool
+```
+
+```{r, eval = FALSE}
+res_comb = NULL 
+
+for(i in 1:10){
+     res_comb[[i]] = glm.nb(Number_severe_asthma_attacks_during_followup ~ (FEV1_preBD_PCT_Group6080 == 2 & FEV1_postBD_PCT_Group6080 == 0) + offset(linear_predictors), data = subset(imp_data_ORACLE_final_COMP_NR, .imp == i))
+}
+
+res_pool <- summary(pool(res_comb), conf.int = TRUE, exp = TRUE)
+res_pool
+```
+
+```{r, eval = FALSE}
+res_comb = NULL 
+
+for(i in 1:10){
+     res_comb[[i]] = glm.nb(Number_severe_asthma_attacks_during_followup ~ (FEV1_preBD_PCT_Group6080 == 0 & FEV1_postBD_PCT_Group6080 == 1) + offset(linear_predictors), data = subset(imp_data_ORACLE_final_COMP_NR, .imp == i))
+}
+
+res_pool <- summary(pool(res_comb), conf.int = TRUE, exp = TRUE)
+res_pool
+```
+
+```{r, eval = FALSE}
+res_comb = NULL 
+
+for(i in 1:10){
+     res_comb[[i]] = glm.nb(Number_severe_asthma_attacks_during_followup ~ (FEV1_preBD_PCT_Group6080 == 1 & FEV1_postBD_PCT_Group6080 == 1) + offset(linear_predictors), data = subset(imp_data_ORACLE_final_COMP_NR, .imp == i))
+}
+
+res_pool <- summary(pool(res_comb), conf.int = TRUE, exp = TRUE)
+res_pool
+```
+
+```{r, eval = FALSE}
+res_comb = NULL 
+
+for(i in 1:10){
+     res_comb[[i]] = glm.nb(Number_severe_asthma_attacks_during_followup ~ (FEV1_preBD_PCT_Group6080 == 2 & FEV1_postBD_PCT_Group6080 == 1) + offset(linear_predictors), data = subset(imp_data_ORACLE_final_COMP_NR, .imp == i))
+}
+
+res_pool <- summary(pool(res_comb), conf.int = TRUE, exp = TRUE)
+res_pool
+```
+
+```{r, eval = FALSE}
+res_comb = NULL 
+
+for(i in 1:10){
+     res_comb[[i]] = glm.nb(Number_severe_asthma_attacks_during_followup ~ (FEV1_preBD_PCT_Group6080 == 0 & FEV1_postBD_PCT_Group6080 == 2) + offset(linear_predictors), data = subset(imp_data_ORACLE_final_COMP_NR, .imp == i))
+}
+
+res_pool <- summary(pool(res_comb), conf.int = TRUE, exp = TRUE)
+res_pool
+```
+
+```{r, eval = FALSE}
+res_comb = NULL 
+
+for(i in 1:10){
+     res_comb[[i]] = glm.nb(Number_severe_asthma_attacks_during_followup ~ (FEV1_preBD_PCT_Group6080 == 1 & FEV1_postBD_PCT_Group6080 == 2) + offset(linear_predictors), data = subset(imp_data_ORACLE_final_COMP_NR, .imp == i))
+}
+
+res_pool <- summary(pool(res_comb), conf.int = TRUE, exp = TRUE)
+res_pool
+```
+
+```{r, eval = FALSE}
+res_comb = NULL 
+
+for(i in 1:10){
+     res_comb[[i]] = glm.nb(Number_severe_asthma_attacks_during_followup ~ (FEV1_preBD_PCT_Group6080 == 2 & FEV1_postBD_PCT_Group6080 == 2) + offset(linear_predictors), data = subset(imp_data_ORACLE_final_COMP_NR, .imp == i))
+}
+
+res_pool <- summary(pool(res_comb), conf.int = TRUE, exp = TRUE)
+res_pool
+```
+
+```{r, eval = FALSE}
+# Fit a negative binomial model in m=10 datasets for every category of FEV1% and pool the results using the Rubin's rules
+
+res_comb = NULL 
+
+for(i in 1:10){
+     res_comb[[i]] = glm.nb(Number_severe_asthma_attacks_during_followup ~ (FEV1_preBD_PCT_Group7080 == 0 & FEV1_postBD_PCT_Group7080 == 0) + offset(linear_predictors), data = subset(imp_data_ORACLE_final_COMP_NR, .imp == i))
+}
+
+res_pool <- summary(pool(res_comb), conf.int = TRUE, exp = TRUE)
+res_pool
+```
+
+```{r, eval = FALSE}
+res_comb = NULL 
+
+for(i in 1:10){
+     res_comb[[i]] = glm.nb(Number_severe_asthma_attacks_during_followup ~ (FEV1_preBD_PCT_Group7080 == 1 & FEV1_postBD_PCT_Group7080 == 0) + offset(linear_predictors), data = subset(imp_data_ORACLE_final_COMP_NR, .imp == i))
+}
+
+res_pool <- summary(pool(res_comb), conf.int = TRUE, exp = TRUE)
+res_pool
+```
+
+```{r, eval = FALSE}
+res_comb = NULL 
+
+for(i in 1:10){
+     res_comb[[i]] = glm.nb(Number_severe_asthma_attacks_during_followup ~ (FEV1_preBD_PCT_Group7080 == 2 & FEV1_postBD_PCT_Group7080 == 0) + offset(linear_predictors), data = subset(imp_data_ORACLE_final_COMP_NR, .imp == i))
+}
+
+res_pool <- summary(pool(res_comb), conf.int = TRUE, exp = TRUE)
+res_pool
+```
+
+```{r, eval = FALSE}
+res_comb = NULL 
+
+for(i in 1:10){
+     res_comb[[i]] = glm.nb(Number_severe_asthma_attacks_during_followup ~ (FEV1_preBD_PCT_Group7080 == 0 & FEV1_postBD_PCT_Group7080 == 1) + offset(linear_predictors), data = subset(imp_data_ORACLE_final_COMP_NR, .imp == i))
+}
+
+res_pool <- summary(pool(res_comb), conf.int = TRUE, exp = TRUE)
+res_pool
+```
+
+```{r, eval = FALSE}
+res_comb = NULL 
+
+for(i in 1:10){
+     res_comb[[i]] = glm.nb(Number_severe_asthma_attacks_during_followup ~ (FEV1_preBD_PCT_Group7080 == 1 & FEV1_postBD_PCT_Group7080 == 1) + offset(linear_predictors), data = subset(imp_data_ORACLE_final_COMP_NR, .imp == i))
+}
+
+res_pool <- summary(pool(res_comb), conf.int = TRUE, exp = TRUE)
+res_pool
+```
+
+```{r, eval = FALSE}
+res_comb = NULL 
+
+for(i in 1:10){
+     res_comb[[i]] = glm.nb(Number_severe_asthma_attacks_during_followup ~ (FEV1_preBD_PCT_Group7080 == 2 & FEV1_postBD_PCT_Group7080 == 1) + offset(linear_predictors), data = subset(imp_data_ORACLE_final_COMP_NR, .imp == i))
+}
+
+res_pool <- summary(pool(res_comb), conf.int = TRUE, exp = TRUE)
+res_pool
+```
+
+```{r, eval = FALSE}
+res_comb = NULL 
+
+for(i in 1:10){
+     res_comb[[i]] = glm.nb(Number_severe_asthma_attacks_during_followup ~ (FEV1_preBD_PCT_Group7080 == 0 & FEV1_postBD_PCT_Group7080 == 2) + offset(linear_predictors), data = subset(imp_data_ORACLE_final_COMP_NR, .imp == i))
+}
+
+res_pool <- summary(pool(res_comb), conf.int = TRUE, exp = TRUE)
+res_pool
+```
+
+```{r, eval = FALSE}
+res_comb = NULL 
+
+for(i in 1:10){
+     res_comb[[i]] = glm.nb(Number_severe_asthma_attacks_during_followup ~ (FEV1_preBD_PCT_Group7080 == 1 & FEV1_postBD_PCT_Group7080 == 2) + offset(linear_predictors), data = subset(imp_data_ORACLE_final_COMP_NR, .imp == i))
+}
+
+res_pool <- summary(pool(res_comb), conf.int = TRUE, exp = TRUE)
+res_pool
+```
+
+```{r, eval = FALSE}
+res_comb = NULL 
+
+for(i in 1:10){
+     res_comb[[i]] = glm.nb(Number_severe_asthma_attacks_during_followup ~ (FEV1_preBD_PCT_Group7080 == 2 & FEV1_postBD_PCT_Group7080 == 2) + offset(linear_predictors), data = subset(imp_data_ORACLE_final_COMP_NR, .imp == i))
+}
+
+res_pool <- summary(pool(res_comb), conf.int = TRUE, exp = TRUE)
+res_pool
+```
+
 # Spline curves
 
 ```{r, eval = FALSE}
@@ -4595,6 +5801,20 @@ imp_data_ORACLE_final_COMP_NR <-
   left_join(imp_data_ORACLE_final_COMP_NR, patient_mean_BEC_NR, by = "Sequential_number")
 ```
 
+
+```{r, eval = FALSE}
+# Calculate the mean FEV1 reversibility of the 10 imputations per patient in the dataset
+patient_mean_REV_NR <- imp_data_ORACLE_final_COMP_NR %>%
+  dplyr::group_by(Sequential_number) %>%
+  dplyr::summarize(mean_REV = mean(FEV1_PCT_reversibility_postBD, na.rm = TRUE))
+```
+
+```{r, eval = FALSE}
+# Join the dataset and the new mean variable for REV
+imp_data_ORACLE_final_COMP_NR <- 
+  left_join(imp_data_ORACLE_final_COMP_NR, patient_mean_REV_NR, by = "Sequential_number")
+```
+
 ```{r, eval = FALSE}
 # Create FeNO groups for the three curves in the spline plot
 imp_data_ORACLE_final_COMP_NR <- imp_data_ORACLE_final_COMP_NR %>%
@@ -4621,13 +5841,13 @@ model <- glm.nb(Number_severe_asthma_attacks_during_followup ~
                   FeNO_baseline_ppb*Blood_Eos_baseline_x10_9_cells_per_L_zeroreplaced + 
                   offset(Follow_up_duration_days) + 
                   as.factor(Enrolled_Trial_name),  
-                data = subset1) #
+                data = subset1)
 ```
 
 ```{r, eval = FALSE}
 # Create a spline curve for BEC and FeNO using ggplot2
 spline <- ggplot(data = subset1, aes(x = mean_BEC, 
-                                     y = predict(model_final, type="response"), 
+                                     y = predict(model, type="response"), 
                                      colour = FeNO_3groups_mean, fill = FeNO_3groups_mean )) +
   geom_smooth(alpha = 0.3) +
   xlab("Baseline BEC (x10^9 cells/L)") +
@@ -4659,19 +5879,6 @@ ggsave("plot.png", spline, width = 8, height = 6, units = "in", dpi = 600)
 ```
 
 ```{r, eval = FALSE}
-# Calculate the mean FEV1 reversibility of the 10 imputations per patient in the dataset
-patient_mean_REV_NR <- imp_data_ORACLE_final_COMP_NR %>%
-  dplyr::group_by(Sequential_number) %>%
-  dplyr::summarize(mean_REV = mean(FEV1_PCT_reversibility_postBD, na.rm = TRUE))
-```
-
-```{r, eval = FALSE}
-# Join the dataset and the new mean variable for REV
-imp_data_ORACLE_final_COMP_NR <- 
-  left_join(imp_data_ORACLE_final_COMP_NR, patient_mean_REV_NR, by = "Sequential_number")
-```
-
-```{r, eval = FALSE}
 # Fit a model for FEV1% reversibility using the calculated mean
 model_rev <- glm.nb(Number_severe_asthma_attacks_during_followup ~ 
                       rcs(mean_REV, 4) + 
@@ -4691,7 +5898,7 @@ model_rev <- glm.nb(Number_severe_asthma_attacks_during_followup ~
 # Create a spline curve using ggplot2
 plot_fev_rev <- ggplot(data = subset1, aes(x = mean_REV, y = predict(model_rev, type="response"))) +
   geom_smooth(fill="lightblue") +
-  xlab("FEV1 reversibility (%)") +
+  xlab("FEV1 Reversibility post-bronchodilator (%)") +
   ylab("Estimated annualised Severe Asthma Attack Rate") +
   scale_y_continuous(breaks=c(0.2,0.4,0.6,0.8,1.0,1.2)) +
   scale_x_continuous(limits=c(-10,90), breaks=c(-10,0,10,20,30,40,50,60,70,80,90)) +
@@ -4703,7 +5910,127 @@ plot_fev_rev <- ggplot(data = subset1, aes(x = mean_REV, y = predict(model_rev, 
         axis.line = element_line(colour = "black"))
 
 # Save the plot to files
-ggsave("SPLINE PLOT FEV1 REV final version 18-07-2024.png", plot_fev_rev, width = 8, height = 6, units = "in", dpi = 600)
+ggsave("SPLINE PLOT FEV1 REV final new x label 07-10-2024.png", plot_fev_rev, width = 8, height = 6, units = "in", dpi = 600)
+```
+
+```{r}
+# Sensitivity analysis: FEV1% reversibility required at baseline visit
+subset1_rev <- subset(subset1, !(Enrolled_Trial_name %in% c("CAPTAIN", 
+                                                        "DRI12544", 
+                                                        "LAVOLTA_1", 
+                                                        "LAVOLTA_2", 
+                                                        "LUTE", "VERSE", 
+                                                        "MILLY", 
+                                                        "NAVIGATOR", 
+                                                        "QUEST",
+                                                        "STRATOS_1",
+                                                        "STRATOS_2")))
+```
+
+```{r, eval = FALSE}
+# Fit a model for FEV1% reversibility using the calculated mean
+model_rev2 <- glm.nb(Number_severe_asthma_attacks_during_followup ~ 
+                      rcs(mean_REV, 4) + 
+                      ACQ_baseline_score_mean + 
+                      Any_severe_attack_previous_12m_0no_1yes + 
+                      FEV1_preBD_PCT_Baseline + 
+                      Treatment_step + 
+                      FeNO_baseline_ppb + 
+                      Blood_Eos_baseline_x10_9_cells_per_L_zeroreplaced + 
+                      offset(Follow_up_duration_days) + 
+                      as.factor(Enrolled_Trial_name), 
+                    data = subset1_rev)
+```
+
+```{r, eval = FALSE}
+# Create a spline curve using ggplot2
+plot_fev_rev2 <- ggplot(data = subset1_rev, aes(x = mean_REV, y = predict(model_rev2, type="response"))) +
+  geom_smooth(fill="lightblue") +
+  xlab("FEV1 Reversibility post-bronchodilator (%)") +
+  ylab("Estimated annualised Severe Asthma Attack Rate") +
+  scale_y_continuous(breaks=c(0.2,0.4,0.6,0.8,1.0,1.2)) +
+  scale_x_continuous(limits=c(-10,90), breaks=c(-10,0,10,20,30,40,50,60,70,80,90)) +
+  theme(axis.text.x = element_text(face = "bold", size = 12),
+        axis.text.y = element_text(face = "bold", size = 12),
+        axis.title = element_text(face = "bold", size = 12),
+        panel.background = element_blank(),
+        panel.grid = element_line(colour = "#ebebeb"),
+        axis.line = element_line(colour = "black"))
+
+# Save the plot to files
+ggsave("SPLINE PLOT FEV1 REV sensitivity new x label 07-10-2024.png", plot_fev_rev2, width = 8, height = 6, units = "in", dpi = 600)
+```
+
+```{r, eval = FALSE}
+# Fit a model for FeNO (separately from BEC) using the calculated mean
+model_FeNO <- glm.nb(Number_severe_asthma_attacks_during_followup ~ 
+                  rcs(mean_FeNO, 3) + 
+                  ACQ_baseline_score_mean + 
+                  Any_severe_attack_previous_12m_0no_1yes +
+                  FEV1_preBD_PCT_Baseline + 
+                  Treatment_step + 
+                  mean_BEC + 
+                  offset(Follow_up_duration_days) + 
+                  as.factor(Enrolled_Trial_name),  
+                data = subset1)
+```
+
+```{r, eval = FALSE}
+# Create a spline curve using ggplot2
+plot_feno <- ggplot(data = subset1, aes(x = mean_FeNO, y = predict(model_FeNO, type="response"))) +
+  geom_smooth(color = "darkviolet", fill="violet") +
+  xlab("Baseline FeNO (ppb)") +
+  ylab("Estimated annualised Severe Asthma Attack Rate") +
+  #geom_vline(xintercept = 50, linetype = "dashed", color = "black", linewidth = 1) +
+  #geom_hline(yintercept = 1, linetype = "dashed", color = "black", linewidth = 0.8) +
+  scale_y_continuous(breaks=seq(0.4, 1.8, by = 0.1)) +
+  scale_x_continuous(limits=c(5,200), breaks=c(5, 10, seq(20, 200, by = 10))) +
+  theme(axis.text.x = element_text(face = "bold", size = 12),
+        axis.text.y = element_text(face = "bold", size = 12),
+        axis.title = element_text(face = "bold", size = 14),
+        panel.background = element_blank(),
+        panel.grid = element_line(colour = "#ebebeb"),
+        axis.line = element_line(colour = "black"))
+
+# Save the plot to files
+ggsave("SPLINE PLOT FeNO final version 02-10-2024.png", plot_feno, width = 8, height = 6, units = "in", dpi = 600)
+
+```
+
+
+```{r, eval = FALSE}
+# Fit a model for BEC (separately from FeNO) using the calculated mean
+model_bec <- glm.nb(Number_severe_asthma_attacks_during_followup ~ 
+                  rcs(mean_BEC, 3) + 
+                  ACQ_baseline_score_mean + 
+                  Any_severe_attack_previous_12m_0no_1yes +
+                  FEV1_preBD_PCT_Baseline + 
+                  Treatment_step + 
+                  mean_FeNO + 
+                  offset(Follow_up_duration_days) + 
+                  as.factor(Enrolled_Trial_name),  
+                data = subset1)
+```
+
+```{r, eval = FALSE}
+# Create a spline curve using ggplot2
+plot_bec <- ggplot(data = subset1, aes(x = mean_BEC, y = predict(model_bec, type="response"))) +
+  geom_smooth(color = "aquamarine3", fill="aquamarine") +
+  xlab("Baseline BEC (x10^9 cells/L)") +
+  ylab("Estimated annualised Severe Asthma Attack Rate") +
+  #geom_hline(yintercept = 1, linetype = "dashed", color = "black", linewidth = 0.8) +
+  scale_y_continuous(breaks=seq(0.4, 1.8, by = 0.1)) +
+  scale_x_continuous(limits=c(0.01, 1.5), breaks=c(0.01, seq(0.1, 1.5, by = 0.1))) +
+  theme(axis.text.x = element_text(face = "bold", size = 12),
+        axis.text.y = element_text(face = "bold", size = 12),
+        axis.title = element_text(face = "bold", size = 14),
+        panel.background = element_blank(),
+        panel.grid = element_line(colour = "#ebebeb"),
+        axis.line = element_line(colour = "black"))
+
+# Save the plot to files
+ggsave("SPLINE PLOT BEC final version 02-10-2024.png", plot_bec, width = 8, height = 6, units = "in", dpi = 600)
+
 ```
 
 
@@ -4725,7 +6052,7 @@ dens_bec_feno <- ggplot(subset1, aes(x = mean_BEC, fill = FeNO_3groups_mean)) +
         axis.line = element_line(colour = "black"),
         legend.position = "none")
 
-ggsave("20240718 Density plot BEC by FenO no legend v3.png", dens_bec_feno, width = 8, height = 6, units = "in", dpi = 300) # Save the plot
+ggsave("20241017 Density plot BEC by FenO no legend v5.png", dens_bec_feno, width = 8, height = 2, units = "in", dpi = 300) # Save the plot
 ```
 
 ```{r, eval = FALSE}
@@ -4748,15 +6075,15 @@ dens_bec_suppl <- ggplot(subset_noenrich, aes(x = mean_BEC, fill = FeNO_3groups_
         axis.line = element_line(colour = "black"),
         legend.position = "top")
 
-ggsave("20240718 Density plot BEC no enrichment with legend v3.png", dens_bec_suppl, width = 8, height = 6, units = "in", dpi = 300)
+ggsave("20240718 Density plot BEC no enrichment with legend v3.png", dens_bec_suppl, width = 8, height = 4, units = "in", dpi = 300)
 ```
 
 ```{r, eval = FALSE}
 # Density plot for FEV1 reversibility
 dens_rev <- ggplot(subset1, aes(x = mean_REV)) +
   geom_density(fill= "lightblue", alpha = 0.4) +
-  scale_x_continuous(breaks = c(0, 10, 20, 30, 40, 50, 60, 70, 75)) + # Use the same scale as spline curve
-  labs(x = "FEV1% Reversibility post-bronchodilator",
+  scale_x_continuous(limits=c(-10,90), breaks = seq(-10, 90, by=10)) + # Use the same scale as spline curve
+  labs(x = "FEV1 Reversibility post-bronchodilator (%)",
        y = "Probability density") +
   theme(axis.text.x = element_text(face="bold", size = 12),
         axis.text.y = element_text(face="bold", size = 12),
@@ -4765,7 +6092,24 @@ dens_rev <- ggplot(subset1, aes(x = mean_REV)) +
         panel.grid = element_line(colour = "#ebebeb"),
         axis.line = element_line(colour = "black"))
 
-ggsave("20240717 Density plot FEV1 rev v3.png", dens_rev, width = 8, height = 6, units = "in", dpi = 300) # Save the plot
+ggsave("20241017 Density plot FEV1 rev v6.png", dens_rev, width = 8, height = 2, units = "in", dpi = 300) # Save the plot
+```
+
+```{r, eval = FALSE}
+# Density plot for FEV1 reversibility sensitivity analysis
+dens_rev2 <- ggplot(subset1_rev, aes(x = mean_REV)) +
+  geom_density(fill= "lightblue", alpha = 0.4) +
+  scale_x_continuous(limits=c(-10,90), breaks = seq(-10, 90, by=10)) + # Use the same scale as spline curve
+  labs(x = "FEV1 Reversibility post-bronchodilator (%)",
+       y = "Probability density") +
+  theme(axis.text.x = element_text(face="bold", size = 12),
+        axis.text.y = element_text(face="bold", size = 12),
+        axis.title = element_text(face="bold", size = 12),
+        panel.background = element_blank(),
+        panel.grid = element_line(colour = "#ebebeb"),
+        axis.line = element_line(colour = "black"))
+
+ggsave("20241007 Density plot FEV1 rev sensitivity v4.png", dens_rev2, width = 8, height = 4, units = "in", dpi = 300) # Save the plot
 ```
 
 # Scaling 25-75th percentile (method Harrell)
@@ -4799,10 +6143,10 @@ quantile(imp_data_ORACLE_final_COMP_NR$BMI)
 ```{r, eval = FALSE}
 ## BMI
 imp_data_ORACLE_final_COMP <- imp_data_ORACLE_final_COMP %>%
-  mutate(BMI_p = BMI / 6)
+  mutate(BMI_p = BMI / 6.2)
 
 imp_data_ORACLE_final_COMP_NR <- imp_data_ORACLE_final_COMP_NR %>%
-  mutate(BMI_p = BMI / 6)
+  mutate(BMI_p = BMI / 6.2)
 ```
 
 
@@ -4839,10 +6183,10 @@ quantile(imp_data_ORACLE_final_COMP_NR$Adherence_InTrial_quantity)
 ## Adherence in trial
 ### The values if the 25th and 75th percentile differ between the datasets (systematically missings imputed or not imputed)
 imp_data_ORACLE_final_COMP <- imp_data_ORACLE_final_COMP %>%
-  mutate(Adh_p = Adherence_InTrial_quantity / 10.66014)
+  mutate(Adh_p = Adherence_InTrial_quantity / 10.66307)
 
 imp_data_ORACLE_final_COMP_NR <- imp_data_ORACLE_final_COMP_NR %>%
-  mutate(Adh_p = Adherence_InTrial_quantity / 13.51923)
+  mutate(Adh_p = Adherence_InTrial_quantity / 11.71437)
 ```
 
 ```{r, eval = FALSE}
@@ -4855,10 +6199,42 @@ quantile(imp_data_ORACLE_final_COMP_NR$FEV1_preBD_PCT_Baseline)
 ## FEV1% pre-bronchodilator
 ### The values if the 25th and 75th percentile differ between the datasets (systematically missings imputed or not imputed)
 imp_data_ORACLE_final_COMP <- imp_data_ORACLE_final_COMP %>%
-  mutate(FEV1_p = FEV1_preBD_PCT_Baseline / 20.0775)
+  mutate(FEV1_p = FEV1_preBD_PCT_Baseline / 20.1)
 
 imp_data_ORACLE_final_COMP_NR <- imp_data_ORACLE_final_COMP_NR %>%
-  mutate(FEV1_p = FEV1_preBD_PCT_Baseline / 20.90325)
+  mutate(FEV1_p = FEV1_preBD_PCT_Baseline / 21.02)
+```
+
+```{r, eval = FALSE}
+## FEV1% post-bronchodilator
+quantile(imp_data_ORACLE_final_COMP$FEV1_postBD_PCT_Baseline, na.rm=TRUE)
+quantile(imp_data_ORACLE_final_COMP_NR$FEV1_postBD_PCT_Baseline) 
+```
+
+```{r, eval = FALSE}
+## FEV1% post-bronchodilator
+### The values if the 25th and 75th percentile differ between the datasets (systematically missings imputed or not imputed)
+imp_data_ORACLE_final_COMP <- imp_data_ORACLE_final_COMP %>%
+  mutate(FEV1post_p = FEV1_postBD_PCT_Baseline / 22.3)
+
+imp_data_ORACLE_final_COMP_NR <- imp_data_ORACLE_final_COMP_NR %>%
+  mutate(FEV1post_p = FEV1_postBD_PCT_Baseline / 22)
+```
+
+```{r, eval = FALSE}
+## FEV1/FVC ratio
+quantile(imp_data_ORACLE_final_COMP$FEV1_FVC_ratio, na.rm=TRUE)
+quantile(imp_data_ORACLE_final_COMP_NR$FEV1_FVC_ratio) 
+```
+
+```{r, eval = FALSE}
+## FEV1/FVC ratio
+### The values if the 25th and 75th percentile differ between the datasets (systematically missings imputed or not imputed)
+imp_data_ORACLE_final_COMP <- imp_data_ORACLE_final_COMP %>%
+  mutate(FEV1FVC_p = FEV1_FVC_ratio / 16.20718)
+
+imp_data_ORACLE_final_COMP_NR <- imp_data_ORACLE_final_COMP_NR %>%
+  mutate(FEV1FVC_p = FEV1_FVC_ratio / 16.71058)
 ```
 
 
@@ -4872,10 +6248,10 @@ quantile(imp_data_ORACLE_final_COMP_NR$FEV1_PCT_reversibility_postBD)
 ## FEV1% reversibility
 ### The values if the 25th and 75th percentile differ between the datasets (systematically missings imputed or not imputed)
 imp_data_ORACLE_final_COMP <- imp_data_ORACLE_final_COMP %>%
-  mutate(FEV1rev_p = FEV1_PCT_reversibility_postBD / 17.78255)
+  mutate(FEV1rev_p = FEV1_PCT_reversibility_postBD / 17.8)
 
 imp_data_ORACLE_final_COMP_NR <- imp_data_ORACLE_final_COMP_NR %>%
-  mutate(FEV1rev_p = FEV1_PCT_reversibility_postBD / 19.20979)
+  mutate(FEV1rev_p = FEV1_PCT_reversibility_postBD / 18.33506)
 ```
 
 ```{r, eval = FALSE}
@@ -4895,47 +6271,45 @@ imp_data_ORACLE_final_COMP_NR <- imp_data_ORACLE_final_COMP_NR %>%
 
 ```{r, eval = FALSE}
 ## FeNO
-quantile(imp_data_ORACLE_final_COMP$FeNO_baseline_ppb)
-quantile(imp_data_ORACLE_final_COMP_NR$FeNO_baseline_ppb)
+quantile(imp_data_ORACLE_final_COMP$FeNO)
+quantile(imp_data_ORACLE_final_COMP_NR$FeNO)
 ```
 
 ```{r, eval = FALSE}
 ## FeNO
 imp_data_ORACLE_final_COMP <- imp_data_ORACLE_final_COMP %>%
-  mutate(FeNO_plog = FeNO_baseline_ppb / 0.4771213)
+  mutate(FeNO_p = FeNO / 28)
 
 imp_data_ORACLE_final_COMP_NR <- imp_data_ORACLE_final_COMP_NR %>%
-  mutate(FeNO_plog = FeNO_baseline_ppb / 0.4771213)
+  mutate(FeNO_p = FeNO / 28)
 ```
 
 ```{r, eval = FALSE}
 ## BEC
-quantile(imp_data_ORACLE_final_COMP$Blood_Eos_baseline_x10_9_cells_per_L_zeroreplaced)
-quantile(imp_data_ORACLE_final_COMP_NR$Blood_Eos_baseline_x10_9_cells_per_L_zeroreplaced)
+quantile(imp_data_ORACLE_final_COMP$BEC)
+quantile(imp_data_ORACLE_final_COMP_NR$BEC)
 ```
 
 ```{r, eval = FALSE}
 ## BEC
 imp_data_ORACLE_final_COMP <- imp_data_ORACLE_final_COMP %>%
-  mutate(BEC_plog = Blood_Eos_baseline_x10_9_cells_per_L_zeroreplaced / 0.4771213)
+  mutate(BEC_p = BEC / 0.28)
 
 imp_data_ORACLE_final_COMP_NR <- imp_data_ORACLE_final_COMP_NR %>%
-  mutate(BEC_plog = Blood_Eos_baseline_x10_9_cells_per_L_zeroreplaced / 0.4771213)
+  mutate(BEC_p = BEC / 0.28)
 ```
 
 ```{r, eval = FALSE}
 ## Total IgE
-quantile(imp_data_ORACLE_final_COMP$Total_IgE, na.rm = TRUE)
-quantile(imp_data_ORACLE_final_COMP_NR$Total_IgE)
+imp_data_ORACLE_final_COMP_NR$IgE_OG <- 10^imp_data_ORACLE_final_COMP_NR$Total_IgE
+
+quantile(imp_data_ORACLE_final_COMP_NR$IgE_OG)
 ```
 
 ```{r, eval = FALSE}
 ## Total IgE
-imp_data_ORACLE_final_COMP <- imp_data_ORACLE_final_COMP %>%
-  mutate(IgE_plog = Total_IgE / 0.8313098)
-
 imp_data_ORACLE_final_COMP_NR <- imp_data_ORACLE_final_COMP_NR %>%
-  mutate(IgE_plog = Total_IgE / 0.8520344)
+  mutate(IgE_p = IgE_OG / 411.1)
 ```
 
 # For Samuel: merge imputed dataset with original variables
