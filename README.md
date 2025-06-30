@@ -1,5 +1,7 @@
 # ORACLE2
-This page contains the scripts for the ORACLE2 analyses.
+This page contains the scripts and R Markdown files for the ORACLE2 analyses.
+
+_Meulmeester FL et al. Inflammatory and clinical risk factors for asthma attacks (ORACLE2): a patient-level meta-analysis of control groups of 22 randomised trials. Lancet Respir Med. 2025 Jun;13(6):505-516. doi: 10.1016/S2213-2600(25)00037-2_
 
 ## Code
 
