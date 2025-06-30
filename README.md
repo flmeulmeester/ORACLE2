@@ -21,6 +21,7 @@ _All ORACLE2 (Meulmeester et al. TLRM 2025) data cleaning and analyses can also 
 5. ORACLE2 Markdown_pt5_truncation_imputation_Meulmeester: Truncation of the dataset to 99th percentile and single imputation of vars Age, BMI and Pack years
 6. ORACLE2 Markdown_pt6_multiple_imputation_mice_Meulmeester: Multiple imputation by chained equations (mice) of the missing values in the ORACLE2 dataset
 7. ORACLE2 Markdown_pt7_cstat_membership_model_Meulmeester: Table S7 with Membership model and discriminative ability (c-statistic) per study
+8. ORACLE2 Markdown_pt8_negative_binomial_regression_Meulmeester: All negative binomial regression models used for TLRM 2025 manuscript (univariable/multivariable)
 
 ## Contact
 
