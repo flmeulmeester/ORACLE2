@@ -1,0 +1,705 @@
+---
+title: "2025-06-27 ORACLE Markdown_pt1_Data_Cleaning"
+author: "FL Meulmeester"
+date: "2025-06-27"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+<style>
+body {
+text-align: justify}
+</style>
+
+<style type="text/css">
+  body{
+  font-size: 12pt;
+}
+</style>
+
+<style type="text/css">
+.main-container {
+  max-width: 1600px;
+  margin-left: auto;
+  margin-right: auto;
+}
+</style>
+
+# Loading the libraries
+ 
+```{r Packages, eval = FALSE, results = 'hide'}
+
+# Set CRAN mirror
+r <- getOption("repos")
+r["CRAN"] <- "http://cran.us.r-project.org"
+options(repos = r)
+
+# Vector of required packages
+Packages <- c(
+  "readstata13", "readxl", "dplyr", "tidyverse", "data.table", "ggplot2", "car",
+  "epiDisplay", "lubridate", "table1", "mice", "VIM", "caret", "lsr", "tidymodels",
+  "sjPlot", "stargazer", "Gmisc", "purrr", "corrplot", "ggcorrplot", "Hmisc",
+  "naniar", "lme4", "MASS", "broom", "nnet", "pROC", "rms", "gridExtra",
+  "survival", "ggsurvfit", "survminer", "fmsb", "DescTools"
+)
+
+# Install any missing packages
+installed <- Packages %in% rownames(installed.packages())
+if (any(!installed)) {
+  install.packages(Packages[!installed])
+}
+
+# Load all packages
+# Use invisible() to keep your console output clean
+invisible(lapply(Packages, library, character.only = TRUE))
+
+```
+
+
+# Data import
+
+```{r, eval = FALSE}
+# Set your working directory
+setwd("Network:/Folder/Folder")
+```
+
+```{r, eval = FALSE}
+# Specify column types for data import, or let R guess the column type
+col_types <- c("guess", "guess", "text", "text", "text", "text", "text", "text", "text", "text", "text", "text", "text", "text", "text", "text", "guess", "text", "text", "text", "text", "text", "text", "text", "text", "text", "numeric", "text", "numeric", "text", "numeric", "text", "guess", "text", "text", "text", "text", "text", "text", "text","guess", "text", "text", "text", "guess", "guess", "guess", "guess", "guess", "guess", "guess", "guess", "guess", "guess", "guess", "guess", "guess", "guess", "guess", "guess", "guess", "guess", "guess", "guess", "guess","guess", "text", "guess", "guess", "guess", "guess", "guess", "guess", "guess", "text", "guess", "guess", "guess", "guess", "text", "text", "text", "text", "text", "text") 
+
+# Read data from Excel, specifying the sheet and column types
+data_ORACLE <- suppressWarnings(read_excel("data.xlsx", sheet = "sheet", col_types = col_types))
+
+# We used the following Excel sheet, with all the RCT data:
+data_ORACLE <- suppressWarnings(readxl::read_excel(
+  "I:/Fleur/6. ORACLE/1. Data/1. ORACLE (imputed) data/ORACLE_DATA_V22_2024-03-30_read_in_R_2024-04-09.xlsx",
+  sheet = "Copy_pastevalue",
+  col_types = col_types
+))
+```
+
+
+# Data cleaning
+
+```{r, eval = FALSE}
+# Remove variables that will not be used in the analysis
+data_ORACLE <- data_ORACLE[,!names(data_ORACLE) 
+                           %in% 
+                             c("Arm_included_0no1yes", 
+                               "AGE_included", 
+                               "Non-missing-EosANDFeNO",
+                               "Non-missing_FUP", 
+                               "Non-missing_EA", 
+                               "Included", 
+                               "Included_in_dataset_6516", 
+                               "Included_in_dataset_6513")]
+```
+
+
+```{r, eval = FALSE}
+# Studies PACT, QUEST and DRI12544 coded the number of attacks as 9999 when no attacks occured
+# Recode 9999 to 0 for outcome variable in these specific studies indicating no attacks during follow-up
+data_ORACLE <- data_ORACLE %>%
+  mutate(Number_severe_asthma_attacks_during_followup = 
+           if_else(Enrolled_Trial_name %in% c("PACT", "QUEST", "DRI12544") & 
+                     Number_severe_asthma_attacks_during_followup == 9999, 0, Number_severe_asthma_attacks_during_followup))
+```
+
+
+```{r, eval = FALSE}
+# In all other studies, 9999 was coded as missig value
+# Recode missing values (9999 or "9999") to NA
+data_ORACLE[data_ORACLE == 9999] <- NA
+summary(data_ORACLE$Blood_Eos_baseline_x10_9_cells_per_L) # Verify recoding for numeric columns
+
+data_ORACLE[data_ORACLE == "9999"] <- NA
+unique(data_ORACLE$LABA_prescribed_0no_1yes) # Verify recoding for text columns
+
+```
+
+
+```{r, eval = FALSE}
+# Replace values of 0 in variables that will be log-transformed, using specific minimum values
+
+## Replace value=0 for Blood Eosinophils (BEC)
+head(sort(data_ORACLE$Blood_Eos_baseline_x10_9_cells_per_L), n=50) # Identify smallest non-zero value
+
+data_ORACLE <- data_ORACLE %>%
+  mutate(Blood_Eos_baseline_x10_9_cells_per_L_zeroreplaced = 
+           case_when(Blood_Eos_baseline_x10_9_cells_per_L == 0 ~ 0.000185, # Use a value equal to 1/2 of the smallest non-zero value
+                     Blood_Eos_baseline_x10_9_cells_per_L > 0 ~ Blood_Eos_baseline_x10_9_cells_per_L), 
+         .after = Blood_Eos_baseline_x10_9_cells_per_L)
+
+head(sort(data_ORACLE$Blood_Eos_baseline_x10_9_cells_per_L_zeroreplaced)) # Verify replacement
+
+## Replace value=0 for FeNO
+head(sort(data_ORACLE$FeNO_baseline_ppb)) # Identify smallest non-zero value
+
+data_ORACLE <- data_ORACLE %>%
+  mutate(FeNO_baseline_ppb = 
+           case_when(FeNO_baseline_ppb == 0 ~ 1.05, # Use a value equal to 1/2 of the smallest non-zero value
+                     FeNO_baseline_ppb > 0 ~ FeNO_baseline_ppb))
+
+head(sort(data_ORACLE$FeNO_baseline_ppb)) # Verify replacement
+```
+
+
+```{r, eval = FALSE}
+# Variable Total IgE had one character value of "<2.0"
+# Convert Total IgE value of <2.0 to "1"
+data_ORACLE$Total_IgE <- replace(data_ORACLE$Total_IgE, data_ORACLE$Total_IgE == "<2.0", "1")
+
+# Check and convert Total IgE to numeric variable for further analyses
+sum(is.na(data_ORACLE$Total_IgE))
+data_ORACLE$Total_IgE = as.numeric(data_ORACLE$Total_IgE)
+sum(is.na(data_ORACLE$Total_IgE)) # Ensure no new NAs were introduced
+```
+
+
+```{r, eval = FALSE, warning = FALSE}
+# FEV1 % Reversibility and Adherence in Trial are not always percentages
+## Check which trials did not code these variables as percentages
+summary_table_FEV1r <- data_ORACLE %>%
+  dplyr::group_by(Enrolled_Trial_name) %>%
+  dplyr::summarize(
+    min_FEV1r = min(FEV1_PCT_reversibility_postBD, na.rm = TRUE),
+    max_FEV1r = max(FEV1_PCT_reversibility_postBD, na.rm = TRUE)) # STATOS 1 and 2
+
+summary_table_adh <- data_ORACLE %>%
+  dplyr::group_by(Enrolled_Trial_name) %>%
+  dplyr::summarize(
+    min_adh = min(Adherence_InTrial_quantity, na.rm = TRUE),
+    max_adh = max(Adherence_InTrial_quantity, na.rm = TRUE)) # CAPTAIN
+```
+
+
+```{r, eval = FALSE}
+# Convert FEV1 % Reversibility to percentage format for specific trials
+summary(data_ORACLE$FEV1_PCT_reversibility_postBD)
+sum(is.na(data_ORACLE$FEV1_PCT_reversibility_postBD))
+
+data_ORACLE <- data_ORACLE %>%
+  mutate(FEV1_PCT_reversibility_postBD = 
+           if_else(Enrolled_Trial_name %in% 
+                     c("STRATOS_1", "STRATOS_2"), FEV1_PCT_reversibility_postBD * 100, FEV1_PCT_reversibility_postBD))
+ 
+summary(data_ORACLE$FEV1_PCT_reversibility_postBD) # Verify recoding
+sum(is.na(data_ORACLE$FEV1_PCT_reversibility_postBD))
+```
+
+
+```{r, eval = FALSE}
+# Convert Adherence in Trial to percentage format for specific trial
+summary(data_ORACLE$Adherence_InTrial_quantity)
+sum(is.na(data_ORACLE$Adherence_InTrial_quantity))
+
+data_ORACLE <- data_ORACLE %>%
+  mutate(Adherence_InTrial_quantity = 
+           if_else(Enrolled_Trial_name %in% 
+                     "CAPTAIN", Adherence_InTrial_quantity * 100, Adherence_InTrial_quantity))
+
+summary(data_ORACLE$Adherence_InTrial_quantity) # Verify recoding
+sum(is.na(data_ORACLE$Adherence_InTrial_quantity))
+```
+
+
+```{r, eval = FALSE}
+# Create a new variable for Atopy history based on Eczema and/or Allergic Rhinitis status
+data_ORACLE <- data_ORACLE %>%
+  mutate(Atopy_history_0no_1yes_9999notknown_COMPUTED = 
+           case_when(
+             Eczema_0no_1yes_9999notknown == 1 ~ 1,
+             AllergicRhinitis__0no_1yes_9999notknown == 1 ~ 1,
+             Eczema_0no_1yes_9999notknown == 0 ~ 0,
+             AllergicRhinitis__0no_1yes_9999notknown == 0 ~ 0), .after = AllergicRhinitis__0no_1yes_9999notknown)
+
+```
+
+
+```{r, eval = FALSE}
+# Relabel Nasal polyposis as chronic rhinosinusitis with nasal polyposis
+
+data_ORACLE <- data_ORACLE %>%
+  mutate(CRSwNP = ifelse(
+    (Nasal_polyposis_0no_1yes_9999notknown == 1 & Chronic_Rhinosinusitis_0no_1yes_9999notknown == 1), 
+    1,
+    0
+    )
+  )
+```
+
+
+```{r, eval = FALSE}
+# Relabel chronic rhinosinusitiss as chronic rhinosinusitis without nasal polyposis
+
+data_ORACLE <- data_ORACLE %>%
+  mutate(CRSsNP = ifelse(
+    (Nasal_polyposis_0no_1yes_9999notknown == 0 & Chronic_Rhinosinusitis_0no_1yes_9999notknown == 1), 
+    1,
+    0
+    )
+  )
+```
+
+
+
+```{r, eval = FALSE}
+# The variable "Age" was received as both categorical and continuous depending on the trial 
+# We recoded the original "Age" variable into categorical and continuous formats
+
+# Create categorical variable
+data_ORACLE <- data_ORACLE %>%
+  mutate(Age_cat =
+           case_when(Age == "[12,_33]" ~ "12 <= x <= 33",
+                     Age == "[12,_42]" ~ "12 <= x <= 42",
+                     Age == "[18,_38]" ~ "18 <= x <= 38",
+                     Age == "[18,_41]" ~ "18 <= x <= 41",
+                     Age == "]33,_47]" ~ "33 < x <= 47",
+                     Age == "]38,_48]" ~ "38 < x <= 48",
+                     Age == "]41,_50]" ~ "41 < x <= 50",
+                     Age == "]42,_51]" ~ "42 < x <= 51",
+                     Age == "]47,_58]" ~ "47 < x <= 58",
+                     Age == "]48,_58]" ~ "48 < x <= 58",
+                     Age == "]50,_58]" ~ "50 < x <= 58",
+                     Age == "]51,_59]" ~ "51 < x <= 59",
+                     Age == "]58,_80]" ~ "58 < x <= 80",
+                     Age == "]58,_84]" ~ "58 < x <= 84",
+                     Age == "]58,_87]" ~ "58 < x <= 87",
+                     Age == "]59,_82]" ~ "59 < x <= 82",
+                     Age == "0 < x <= 25" ~ Age,
+                     Age == "10 < x <= 20" ~ Age,
+                     Age == "10 < x <= 15" ~ Age,
+                     Age == "15 < x <= 20" ~ Age,
+                     Age == "20 < x <= 25" ~ Age,
+                     Age == "20 < x <= 40" ~ Age,
+                     Age == "25 < x <= 30" ~ Age,
+                     Age == "25 < x <= 50" ~ Age,
+                     Age == "30 < x <= 35" ~ Age,
+                     Age == "35 < x <= 40" ~ Age,
+                     Age == "40 < x <= 45" ~ Age,
+                     Age == "45 < x <= 50" ~ Age,
+                     Age == "50 < x <= 55" ~ Age,
+                     Age == "50 < x <= 75" ~ Age,
+                     Age == "55 < x <= 60" ~ Age,
+                     Age == "60 < x <= 65" ~ Age,
+                     Age == "60 < x <= 80" ~ Age,
+                     Age == "65 < x <= 70" ~ Age,
+                     Age == "70 < x <= 75" ~ Age,
+                     Age == "20 < x <= 30" ~ Age,
+                     Age == "30 < x <= 40" ~ Age,
+                     Age == "40 < x <= 50" ~ Age,
+                     Age == "50 < x <= 60" ~ Age,
+                     Age == "60 < x <= 70" ~ Age,
+                     Age == "70 < x <= 80" ~ Age,
+                     Age == "6" ~ "0 < x <= 10",
+                     Age == "7" ~ "0 < x <= 10",
+                     Age == "8" ~ "0 < x <= 10",
+                     Age == "9" ~ "0 < x <= 10",
+                     Age == "10" ~ "0 < x <= 10",), .after = Age)
+
+# Create continuous variable
+data_ORACLE <- data_ORACLE %>%
+  mutate(Age_con = ifelse(nchar(Age) <= 3, Age, NA), .after = Age_cat)
+
+# Check for missing values in Age_con and convert to numeric
+sum(is.na(data_ORACLE$Age_con))
+data_ORACLE$Age_con = as.numeric(data_ORACLE$Age_con)
+sum(is.na(data_ORACLE$Age_con))
+
+# Replace missing values in Age_cat using Age_con
+data_ORACLE <- data_ORACLE %>%
+  mutate(Age_cat = case_when(
+    is.na(Age_cat) & Age_con >= 0 & Age_con <= 10 ~ "0 < x <= 10",
+    is.na(Age_cat) & Age_con > 10 & Age_con <= 15 ~ "10 < x <= 15",
+    is.na(Age_cat) & Age_con > 15 & Age_con <= 20 ~ "15 < x <= 20",
+    is.na(Age_cat) & Age_con > 20 & Age_con <= 25 ~ "20 < x <= 25",
+    is.na(Age_cat) & Age_con > 25 & Age_con <= 30 ~ "25 < x <= 30",
+    is.na(Age_cat) & Age_con > 30 & Age_con <= 35 ~ "30 < x <= 35",
+    is.na(Age_cat) & Age_con > 35 & Age_con <= 40 ~ "35 < x <= 40",
+    is.na(Age_cat) & Age_con > 40 & Age_con <= 45 ~ "40 < x <= 45",
+    is.na(Age_cat) & Age_con > 45 & Age_con <= 50 ~ "45 < x <= 50",
+    is.na(Age_cat) & Age_con > 50 & Age_con <= 55 ~ "50 < x <= 55",
+    is.na(Age_cat) & Age_con > 55 & Age_con <= 60 ~ "55 < x <= 60",
+    is.na(Age_cat) & Age_con > 60 & Age_con <= 65 ~ "60 < x <= 65",
+    is.na(Age_cat) & Age_con > 65 & Age_con <= 70 ~ "65 < x <= 70",
+    is.na(Age_cat) & Age_con > 70 & Age_con <= 75 ~ "70 < x <= 75",
+    is.na(Age_cat) & Age_con > 75 & Age_con <= 80 ~ "75 < x <= 80",
+    is.na(Age_cat) & Age_con > 80 & Age_con <= 85 ~ "80 < x <= 85",
+    is.na(Age_cat) & Age_con > 85 & Age_con <= 90 ~ "85 < x <= 90",
+    TRUE ~ as.character(Age_cat)
+  ))
+
+# Create Minimum variable for checks later
+data_ORACLE <- data_ORACLE %>%
+  mutate(Age_min =
+           case_when(Age == "[12,_33]" ~ 12,
+                     Age == "[12,_42]" ~ 12,
+                     Age == "[18,_38]" ~ 18,
+                     Age == "[18,_41]" ~ 18,
+                     Age == "]33,_47]" ~ 33.1,
+                     Age == "]38,_48]" ~ 38.1,
+                     Age == "]41,_50]" ~ 41.1,
+                     Age == "]42,_51]" ~ 42.1,
+                     Age == "]47,_58]" ~ 47.1,
+                     Age == "]48,_58]" ~ 48.1,
+                     Age == "]50,_58]" ~ 50.1,
+                     Age == "]51,_59]" ~ 51.1,
+                     Age == "]58,_80]" ~ 58.1,
+                     Age == "]58,_84]" ~ 58.1,
+                     Age == "]58,_87]" ~ 58.1,
+                     Age == "]59,_82]" ~ 59.1,
+                     Age_cat == "0 < x <= 25" ~ 12,
+                     Age_cat == "0 < x <= 10" ~ 0,
+                     Age_cat == "10 < x <= 20" ~ 12,
+                     Age_cat == "10 < x <= 15" ~ 12,
+                     Age_cat == "15 < x <= 20" ~ 15.1,
+                     Age_cat == "20 < x <= 25" ~ 20.1,
+                     Age_cat == "20 < x <= 40" ~ 20.1,
+                     Age_cat == "25 < x <= 30" ~ 25.1,
+                     Age_cat == "25 < x <= 50" ~ 25.1,
+                     Age_cat == "30 < x <= 35" ~ 30.1,
+                     Age_cat == "35 < x <= 40" ~ 35.1,
+                     Age_cat == "40 < x <= 45" ~ 40.1,
+                     Age_cat == "45 < x <= 50" ~ 45.1,
+                     Age_cat == "50 < x <= 55" ~ 50.1,
+                     Age_cat == "50 < x <= 75" ~ 50.1,
+                     Age_cat == "55 < x <= 60" ~ 55.1,
+                     Age_cat == "60 < x <= 65" ~ 60.1,
+                     Age_cat == "60 < x <= 80" ~ 60.1,
+                     Age_cat == "65 < x <= 70" ~ 65.1,
+                     Age_cat == "70 < x <= 75" ~ 70.1,
+                     Age_cat == "20 < x <= 30" ~ 20.1,
+                     Age_cat == "30 < x <= 40" ~ 30.1,
+                     Age_cat == "40 < x <= 50" ~ 40.1,
+                     Age_cat == "50 < x <= 60" ~ 50.1,
+                     Age_cat == "60 < x <= 70" ~ 60.1,
+                     Age_cat == "70 < x <= 80" ~ 70.1,
+                     Age_cat == "75 < x <= 80" ~ 75.1,
+                     Age_cat == "80 < x <= 85" ~ 80.1,
+                     Age_cat == "85 < x <= 90" ~ 85.1,), .after = Age_con)
+
+# Create Maximum variable for checks later
+data_ORACLE <- data_ORACLE %>%
+  mutate(Age_max =
+           case_when(Age == "[12,_33]" ~ 33,
+                     Age == "[12,_42]" ~ 42,
+                     Age == "[18,_38]" ~ 38,
+                     Age == "[18,_41]" ~ 41,
+                     Age == "]33,_47]" ~ 47,
+                     Age == "]38,_48]" ~ 48,
+                     Age == "]41,_50]" ~ 50,
+                     Age == "]42,_51]" ~ 51,
+                     Age == "]47,_58]" ~ 58,
+                     Age == "]48,_58]" ~ 58,
+                     Age == "]50,_58]" ~ 58,
+                     Age == "]51,_59]" ~ 59,
+                     Age == "]58,_80]" ~ 80,
+                     Age == "]58,_84]" ~ 84,
+                     Age == "]58,_87]" ~ 87,
+                     Age == "]59,_82]" ~ 82,
+                     Age_cat == "0 < x <= 25" ~ 25,
+                     Age_cat == "0 < x <= 10" ~ 10,
+                     Age_cat == "10 < x <= 20" ~ 20,
+                     Age_cat == "10 < x <= 15" ~ 15,
+                     Age_cat == "15 < x <= 20" ~ 20,
+                     Age_cat == "20 < x <= 25" ~ 25,
+                     Age_cat == "20 < x <= 40" ~ 40,
+                     Age_cat == "25 < x <= 30" ~ 30,
+                     Age_cat == "25 < x <= 50" ~ 50,
+                     Age_cat == "30 < x <= 35" ~ 35,
+                     Age_cat == "35 < x <= 40" ~ 40,
+                     Age_cat == "40 < x <= 45" ~ 45,
+                     Age_cat == "45 < x <= 50" ~ 50,
+                     Age_cat == "50 < x <= 55" ~ 55,
+                     Age_cat == "50 < x <= 75" ~ 75,
+                     Age_cat == "55 < x <= 60" ~ 60,
+                     Age_cat == "60 < x <= 65" ~ 65,
+                     Age_cat == "60 < x <= 80" ~ 80,
+                     Age_cat == "65 < x <= 70" ~ 70,
+                     Age_cat == "70 < x <= 75" ~ 75,
+                     Age_cat == "20 < x <= 30" ~ 30,
+                     Age_cat == "30 < x <= 40" ~ 40,
+                     Age_cat == "40 < x <= 50" ~ 50,
+                     Age_cat == "50 < x <= 60" ~ 60,
+                     Age_cat == "60 < x <= 70" ~ 70,
+                     Age_cat == "70 < x <= 80" ~ 71,
+                     Age_cat == "75 < x <= 80" ~ 80,
+                     Age_cat == "80 < x <= 85" ~ 85,
+                     Age_cat == "85 < x <= 90" ~ 90,), .after = Age_min)
+```
+
+
+```{r, eval = FALSE}
+# The variable "BMI" was received as both categorical and continuous depending on the trial 
+# We recoded the original "BMI" variable into categorical and continuous formats
+
+# Create categorical variable
+data_ORACLE <- data_ORACLE %>%
+  mutate(BMI_cat =
+           case_when(BMI == "0 < x <= 19" ~ BMI,
+                     BMI == "19 < x <= 25" ~ BMI,
+                     BMI == "25 < x <= 30" ~ BMI,
+                     BMI == "30 < x <= 80" ~ BMI,
+                     BMI == "Normal_weight" ~ "19 < x <= 25",
+                     BMI == "Obesity" ~ "30 < x <= 80",
+                     BMI == "Obesity_class_I" ~ "30 < x <= 35",
+                     BMI == "Obesity_class_II" ~ "35 < x <= 40",
+                     BMI == "Obesity_class_III" ~ "40 < x",
+                     BMI == "Overweight" ~ "25 < x <= 30",
+                     BMI == "Pre-obesity" ~ "25 < x <= 30",
+                     BMI == "Underweight" ~ "0 < x <= 19"), .after = BMI)
+
+# Create continuous variable
+data_ORACLE <- data_ORACLE %>%
+  mutate(BMI_con = ifelse(!grepl("x", BMI) & 
+                            !grepl("obesity", BMI,  ignore.case = TRUE) & 
+                            !grepl("weight", BMI,  ignore.case = TRUE), BMI, NA), .after = BMI_cat)
+
+# Check for missing values in BMI_con and convert to numeric
+sum(is.na(data_ORACLE$BMI_con)) 
+data_ORACLE$BMI_con = as.numeric(data_ORACLE$BMI_con)
+sum(is.na(data_ORACLE$BMI_con))
+
+# Replace missing values in BMI_cat using BMI_con
+data_ORACLE <- data_ORACLE %>%
+  mutate(BMI_cat = case_when(
+    is.na(BMI_cat) & BMI_con <= 19 ~ "0 < x <= 19",
+    is.na(BMI_cat) & BMI_con > 19 & BMI_con <= 25 ~ "19 < x <= 25",
+    is.na(BMI_cat) & BMI_con > 25 & BMI_con <= 30 ~ "25 < x <= 30",
+    is.na(BMI_cat) & BMI_con > 30 & BMI_con <= 35 ~ "30 < x <= 35",
+    is.na(BMI_cat) & BMI_con > 35 & BMI_con <= 40 ~ "35 < x <= 40",
+    is.na(BMI_cat) & BMI_con > 40  ~ "40 < x",
+    TRUE ~ as.character(BMI_cat)
+  ))
+
+# Create Minimum variable for checks later
+data_ORACLE <- data_ORACLE %>%
+  mutate(BMI_min =
+           case_when(BMI_cat == "0 < x <= 19" ~ 0.001,
+                     BMI_cat == "19 < x <= 25" ~ 19.001,
+                     BMI_cat == "25 < x <= 30" ~ 25.001,
+                     BMI_cat == "30 < x <= 80" ~ 30.001,
+                     BMI_cat == "30 < x <= 35" ~ 30.001,
+                     BMI_cat == "35 < x <= 40" ~ 35.001,
+                     BMI_cat == "40 < x" ~ 40.001,
+                     BMI == "Normal_weight" ~ 19.001,
+                     BMI == "Obesity" ~ 30.001,
+                     BMI == "Obesity_class_I" ~ 30.001,
+                     BMI == "Obesity_class_II" ~ 35.001,
+                     BMI == "Obesity_class_III" ~ 40.001,
+                     BMI == "Overweight" ~ 25.001,
+                     BMI == "Pre-obesity" ~ 25.001,
+                     BMI == "Underweight" ~ 0.001), .after = BMI_con)
+
+# Create Maximum variable for checks later
+data_ORACLE <- data_ORACLE %>%
+  mutate(BMI_max =
+           case_when(BMI_cat == "0 < x <= 19" ~ 19,
+                     BMI_cat == "19 < x <= 25" ~ 25,
+                     BMI_cat == "25 < x <= 30" ~ 30,
+                     BMI_cat == "30 < x <= 80" ~ 80,
+                     BMI_cat == "30 < x <= 35" ~ 35,
+                     BMI_cat == "35 < x <= 40" ~ 40,
+                     BMI_cat == "40 < x" ~ 80,
+                     BMI == "Normal_weight" ~ 24.9,
+                     BMI == "Obesity" ~ 80,
+                     BMI == "Obesity_class_I" ~ 34.9,
+                     BMI == "Obesity_class_II" ~ 39.9,
+                     BMI == "Obesity_class_III" ~ 80,
+                     BMI == "Overweight" ~ 30,
+                     BMI == "Pre-obesity" ~ 29.9,
+                     BMI == "Underweight" ~ 18.5), .after = BMI_min)
+
+```
+
+
+```{r, eval = FALSE}
+# The variable "History of severe asthma attacks" was recoded into a continuous variable 
+# Remaining missing values were replaced using multiple imputation (in multiple imputation code)
+
+data_ORACLE <- data_ORACLE %>%
+  mutate(Number_severe_attack_previous_12m_con = 
+           ifelse(!grepl(">", Number_severe_attack_previous_12m) & 
+                    !grepl("1-2", Number_severe_attack_previous_12m, ignore.case = TRUE), Number_severe_attack_previous_12m, NA), 
+         .after = Number_severe_attack_previous_12m)
+
+data_ORACLE$Number_severe_attack_previous_12m_con = as.numeric(data_ORACLE$Number_severe_attack_previous_12m_con)
+```
+
+
+```{r, eval = FALSE}
+# The variable "History of hospitalisations" was recoded into a continuous variable 
+# Remaining missing values were replaced using multiple imputation (in multiple imputation code)
+
+data_ORACLE <- data_ORACLE %>%
+  mutate(Number_hospitalisations_for_asthma_previous_12_months_con = 
+           ifelse(Number_hospitalisations_for_asthma_previous_12_months >= 0, Number_hospitalisations_for_asthma_previous_12_months, NA), 
+         .after = Number_hospitalisations_for_asthma_previous_12_months)
+
+data_ORACLE$Number_hospitalisations_for_asthma_previous_12_months_con = as.numeric(data_ORACLE$Number_hospitalisations_for_asthma_previous_12_months_con)
+```
+
+
+```{r, eval = FALSE}
+# For non-smokers, the value of variable "Pack years" was sometimes missing, although this should logically be 0
+# Recode Pack years: set to 0 for non-smokers
+data_ORACLE <- data_ORACLE %>%
+  mutate(Pack_years = case_when(
+    Smoking_0never_1ex_2current == 0 ~ "0",
+    !is.na(Pack_years) ~ Pack_years
+  ))
+```
+
+
+```{r, eval = FALSE}
+# The variable "Pack years" was received as both categorical and continuous depending on the trial 
+# We recoded the original "Pack years" variable into categorical and continuous formats
+
+# Create continuous variable
+data_ORACLE <- data_ORACLE %>%
+  mutate(Pack_years_con = ifelse(!grepl("per", Pack_years, ignore.case = TRUE), Pack_years, NA), .after = Pack_years)
+
+# Check for missing values in Pack_years_con and convert to numeric
+sum(is.na(data_ORACLE$Pack_years_con)) 
+data_ORACLE$Pack_years_con = as.numeric(data_ORACLE$Pack_years_con)
+sum(is.na(data_ORACLE$Pack_years_con))  # same number is good; changing the data type should not create missing values
+
+# Create categorical variable
+data_ORACLE <- data_ORACLE %>%
+  mutate(Pack_years_cat =
+           case_when(Pack_years == "<10 cigarettes per day" ~ Pack_years,
+                     Pack_years == ">=10 cigarettes per day" ~ Pack_years,
+                     Pack_years_con == 0 ~ "0 cigarettes per day",
+                     Pack_years_con < 10 ~ "<10 cigarettes per day",
+                     Pack_years_con >= 10 ~ ">=10 cigarettes per day"), .after = Pack_years_con)
+
+# Create Minimum variable for checks later
+data_ORACLE <- data_ORACLE %>%
+  mutate(Pack_years_min =
+           case_when(Pack_years_cat == "<10 cigarettes per day" ~ 0.001,
+                     Pack_years_cat == ">=10 cigarettes per day" ~ 10,
+                     Pack_years_cat == "0 cigarettes per day" ~ 0), .after = Pack_years_cat)
+
+# Create Maximum variable for checks later
+data_ORACLE <- data_ORACLE %>%
+  mutate(Pack_years_max =
+           case_when(Pack_years_cat == "<10 cigarettes per day" ~ 9.9,
+                     Pack_years_cat == ">=10 cigarettes per day" ~ 20, # 20 pack years was the maximum value in the dataset
+                     Pack_years_cat == "0 cigarettes per day" ~ 0), .after = Pack_years_min)
+
+```
+
+
+```{r, eval = FALSE}
+# Variable "Country" was regrouped into regions due to the high number of country levels
+
+sum(is.na(data_ORACLE$Country)) # Check number of missing values
+
+data_ORACLE$Country <- as.factor(data_ORACLE$Country)
+unique(data_ORACLE$Country) # List unique countries in the dataset
+
+data_ORACLE <- data_ORACLE %>%
+  mutate(Region = case_when(
+    Country == "Italy" ~ "Europe",
+    Country == "United_Kingdom" ~ "Europe",
+    Country == "United Kingdom" ~ "Europe",
+    Country == "UK - CMD" ~ "Europe",
+    Country == "Belgium" ~ "Europe",
+    Country == "Europe"  ~ "Europe",
+    Country == "Poland" ~ "Europe",
+    Country == "Romania" ~ "Europe",
+    Country == "Hungria" ~ "Europe",
+    Country == "Hungary" ~ "Europe",
+    Country == "Czech_Republic" ~ "Europe",
+    Country == "Belarus" ~ "Europe",
+    Country == "Ukraine" ~ "Europe",
+    Country == "Spain" ~ "Europe",
+    Country == "Slovakia" ~ "Europe",
+    Country == "Russia" ~ "Europe",
+    Country == "Russian Federation" ~ "Europe",
+    Country == "France" ~ "Europe",
+    Country == "Serbia" ~ "Europe",
+    Country == "Bulgaria" ~ "Europe",
+    Country == "Germany" ~ "Europe",
+    Country == "Netherlands" ~ "Europe",
+    Country == "Latvia" ~ "Europe",
+    Country == "Lithuania" ~ "Europe",
+    Country == "Asia" ~ "Asia",
+    Country == "Japan" ~ "Asia",
+    Country == "Korea" ~ "Asia",
+    Country == "Korea, Republic of" ~ "Asia",
+    Country == "Israel" ~ "Asia",
+    Country == "Turkey" ~ "Asia",
+    Country == "Vietnam" ~ "Asia",
+    Country == "South_Korea" ~ "Asia",
+    Country == "North_America" ~ "North_America",
+    Country == "United_States" ~ "North_America",
+    Country == "United States" ~ "North_America",
+    Country == "Canada" ~ "North_America",
+    Country == "Mexico" ~ "North_America",
+    Country == "South_America" ~ "South_America",
+    Country == "Argentina" ~ "South_America",
+    Country == "Chile" ~ "South_America",
+    Country == "Peru" ~ "South_America",
+    Country == "Brazil" ~ "South_America",
+    Country == "Australia" ~ "Oceania",
+    Country == "New_Zealand" ~ "Oceania",
+    Country == "Oceania" ~ "Oceania",
+    Country == "South_Africa" ~ "South_Africa",
+    Country == "South Africa" ~ "South_Africa"), .after = Country)
+
+data_ORACLE$Region <- as.factor(data_ORACLE$Region)
+```
+
+
+```{r, eval = FALSE}
+# Variable "Ethnicity" was provided with different spelling (capitals/lower case)
+
+unique(data_ORACLE$Ethnicity) # Check unique values in Ethnicity column
+
+# Standardize the spelling of Ethnicity values
+data_ORACLE <- data_ORACLE %>%
+  mutate(Ethnicity = case_when(
+    Ethnicity == "American_Indian_or_Alaska_Native" ~ Ethnicity,
+    Ethnicity == "Asian" ~ Ethnicity,
+    Ethnicity == "ASIAN" ~ "Asian",
+    Ethnicity == "BLACK OR AFRICAN AMERICAN" ~ "Black_or_African_American",
+    Ethnicity == "Black_or_African_American" ~ Ethnicity,
+    Ethnicity == "Maori" ~ Ethnicity,
+    Ethnicity == "Multiple" ~ Ethnicity,
+    Ethnicity == "Native_Hawaiian_or_other_Pacific_Islander" ~ Ethnicity,
+    Ethnicity == "Other" ~ Ethnicity,
+    Ethnicity == "OTHER" ~ "Other",
+    Ethnicity == "White" ~ Ethnicity,
+    Ethnicity == "WHITE" ~ "White"
+  ))
+
+# Check unique values again to ensure standardization
+unique(data_ORACLE$Ethnicity)
+```
+
+
+```{r, eval = FALSE}
+# Compute a new variable for previous ICU or intubation
+data_ORACLE <- data_ORACLE %>%
+  mutate(Previous_ICU_or_intubation_0no_1yes = 
+           case_when(Previous_ICU_0no_1yes_9999notknown == 1 ~ 1,
+                     Previous_Intubation_0no_1yes_9999notknown == 1 ~ 1,
+                     Previous_ICU_0no_1yes_9999notknown == 0 ~ 0,
+                     Previous_Intubation_0no_1yes_9999notknown == 0 ~ 0), .after = Previous_Intubation_0no_1yes_9999notknown)
+
+```
+
+
+# Save the dataset
+
+```{r, eval = FALSE}
+# Save data_ORACLE to a CSV file
+# Fill in the date at xxxx-xx-xx eg 2025-06-27 for 27th June 2025
+write.csv(data_ORACLE, file = "xxxx-xx-xx data_ORACLE_CLEANED.csv", row.names = FALSE)
+
+```
+

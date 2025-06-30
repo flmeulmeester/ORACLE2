@@ -1,0 +1,1136 @@
+---
+title: "2025-06-27 ORACLE Markdown_pt6_multiple_imputation_mice"
+author: "FL Meulmeester"
+date: "2025-06-30"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+<style>
+body {
+text-align: justify}
+</style>
+
+<style type="text/css">
+  body{
+  font-size: 12pt;
+}
+</style>
+
+<style type="text/css">
+.main-container {
+  max-width: 1600px;
+  margin-left: auto;
+  margin-right: auto;
+}
+</style>
+
+# Loading the libraries
+ 
+```{r Packages, eval = FALSE, results = 'hide'}
+
+# Set CRAN mirror
+r <- getOption("repos")
+r["CRAN"] <- "http://cran.us.r-project.org"
+options(repos = r)
+
+# Vector of required packages
+Packages <- c(
+  "readstata13", "readxl", "dplyr", "tidyverse", "data.table", "ggplot2", "car",
+  "epiDisplay", "lubridate", "table1", "mice", "VIM", "caret", "lsr", "tidymodels",
+  "sjPlot", "stargazer", "Gmisc", "purrr", "corrplot", "ggcorrplot", "Hmisc",
+  "naniar", "lme4", "MASS", "broom", "nnet", "pROC", "rms", "gridExtra",
+  "survival", "ggsurvfit", "survminer", "fmsb", "DescTools"
+)
+
+# Install any missing packages
+installed <- Packages %in% rownames(installed.packages())
+if (any(!installed)) {
+  install.packages(Packages[!installed])
+}
+
+# Load all packages
+# Use invisible() to keep your console output clean
+invisible(lapply(Packages, library, character.only = TRUE))
+```
+
+
+# Data import
+
+```{r, eval = FALSE}
+# This R code uses the cleaned data with single imputation in Age, BMI and Pack years from 2025-06-27 ORACLE Markdown_pt5_truncation_imputation
+# Read as data_arm_age12.SI
+
+data_arm_age12.SI <- read.csv("C:/Users/YourName/Documents/xxxx-xx-xx data_arm_age12_SI.csv")
+
+```
+
+# Multiple imputation by chained equation (mice)
+
+```{r, eval = FALSE}
+# The dataset consists of many variables/columns; for the optimal mice model, we should choose which variables to impute
+
+# For lung function measures, check which ones have the lowest % of missing
+# Create a named vector with the NA counts for each variable
+na_counts <- c(
+  FEV1_PCT_reversibility_postBD = sum(is.na(data_arm_age12.SI$FEV1_PCT_reversibility_postBD)),
+  FEV1_postBD_PCT_Baseline = sum(is.na(data_arm_age12.SI$FEV1_postBD_PCT_Baseline)),
+  FEV1_postBD_L_Baseline = sum(is.na(data_arm_age12.SI$FEV1_postBD_L_Baseline)),
+  FEV1_preBD_PCT_Baseline = sum(is.na(data_arm_age12.SI$FEV1_preBD_PCT_Baseline)),
+  FEV1_preBD_L_Baseline = sum(is.na(data_arm_age12.SI$FEV1_preBD_L_Baseline)),
+  FEV1_predicted_L = sum(is.na(data_arm_age12.SI$FEV1_predicted_L)),
+  FVC_preBD_L_Baseline = sum(is.na(data_arm_age12.SI$FVC_preBD_L_Baseline)),
+  FVC_preBD_PCT_Baseline = sum(is.na(data_arm_age12.SI$FVC_preBD_PCT_Baseline)),
+  FVC_postBD_L_Baseline = sum(is.na(data_arm_age12.SI$FVC_postBD_L_Baseline)),
+  FVC_predicted_L = sum(is.na(data_arm_age12.SI$FVC_predicted_L)),
+  FVC_postBD_PCT_Baseline = sum(is.na(data_arm_age12.SI$FVC_postBD_PCT_Baseline))
+)
+
+# Convert the vector to a data frame
+na_counts_df <- data.frame(Variable = names(na_counts), NA_Count = na_counts)
+
+# Sort the data frame by the NA counts from lowest to highest
+na_counts_df_sorted <- na_counts_df[order(na_counts_df$NA_Count), ]
+
+```
+
+
+```{r, eval = FALSE}
+# Check all variables and their column numbers
+tibble(
+  ColumnNumber = seq_along(data_arm_age12.SI),
+  VariableName = names(data_arm_age12.SI)
+  ) %>% print(n = 90)
+```
+
+
+```{r, eval = FALSE}
+# Prepare the data frame by removing variables that will not be used for further analysis
+## By removing variables, you can choose which variables you want to have imputed in the next step
+
+data_arm_age12.SIshort <- data_arm_age12.SI[,!names(data_arm_age12.SI) %in% 
+                                              c("ICS_TYPE", 
+                                                "ICS_Dose_PER_DAY", 
+                                                "ICS_DOSE_CLASS",  
+                                                "ACT_baseline_score",
+                                                "Blood_Eos_baseline_x10_9_cells_per_L", 
+                                                "Country", 
+                                                "Number_severe_attack_previous_12m", 
+                                                "Number_hospitalisations_for_asthma_previous_12_months",
+                                                "Psychiatric_disease_0no_1yes_9999notknown", 
+                                                "Atopy_history_0no_1yes_9999notknown_COMPUTED",
+                                                "Adherence_PreTrial_quality", 
+                                                "Previous_ICU_0no_1yes_9999notknown", 
+                                                "Previous_Intubation_0no_1yes_9999notknown", 
+                                                "Adherence_InTrial_quality",
+                                                "FEV1_predicted_L",
+                                                "FVC_predicted_L", 
+                                                "FVC_postBD_PCT_Baseline", 
+                                                "FVC_preBD_PCT_Baseline", 
+                                                "FEV1PREBD_L_52W", 
+                                                "FEV1PREBD_PCT_52W", 
+                                                "FEV1POSTBD_L_52W",
+                                                "FEV1POSTBD_PCT_52W", 
+                                                "ACQ_baseline_score_item1_sleepawakenings", 
+                                                "ACQ_baseline_score_item2_morningsymptoms", 
+                                                "ACQ_baseline_score_item3_activitylimitation", 
+                                                "ACQ_baseline_score_item4_dyspnea", 
+                                                "ACQ_baseline_score_item5_wheezing", 
+                                                "ACQ_baseline_score_item6_RelieverUse", 
+                                                "ACQ_baseline_score_item7_FEV1", 
+                                                "ICS_DOSE_CLASS", 
+                                                "End_FollowUp_Reason")]
+
+```
+
+
+```{r, eval = FALSE}
+# Check all variables and their column numbers
+tibble(
+  ColumnNumber = seq_along(data_arm_age12.SIshort),
+  VariableName = names(data_arm_age12.SIshort)
+  ) %>% print(n = 90)
+```
+
+
+```{r, eval = FALSE}
+# Make sure all variables have the correct data type, e.g. factor, numeric or character
+
+factors <- c(
+  "Enrolled_Trial_name",
+  "Treatment_arm",
+  "Gender_0Female_1Male",
+  "Ethnicity",
+  "Region",
+  "Treatment_step",
+  "Any_severe_attack_previous_12m_0no_1yes",
+  "Previous_ICU_or_intubation_0no_1yes",
+  "Smoking_0never_1ex_2current",
+  "Psy_disease_type_0none_1depressionORanxiety_2psychosis_3nontobaccosubstanceabuse_4other_9999notknown",
+  "Atopy_history_0no_1yes_9999notknown",
+  "Eczema_0no_1yes_9999notknown",
+  "AllergicRhinitis__0no_1yes_9999notknown",
+  "Airborne_allergen_sensitisation_on_testing_0no_1yes_9999notknown",
+  "Chronic_Rhinosinusitis_0no_1yes_9999notknown",
+  "SABA_prescribed__0no_1yes",
+  "Any_ICS_prescribed_0no_1yes",
+  "Nasal_polyposis_0no_1yes_9999notknown",
+  "Previous_nasal_polypectomy_0no_1yes_9999notknown",
+  "LABA_prescribed_0no_1yes",
+  "LAMA_prescribed__0no_1yes",
+  "maintenance_OCS_prescribed__0no_1yes",
+  "Montelukast_prescribed__0no_1yes",
+  "Theophylline_prescribed__0no_1yes",
+  "Intranasal_seroid_prescribed__0no_1yes"
+)
+
+data_arm_age12.SIshort <- data_arm_age12.SIshort %>%
+  mutate(across(all_of(factors), ~ factor(.x, levels = unique(.x))))
+
+numeric <- c(
+  "Sequential_number",
+  "Age",
+  "BMI",
+  "Number_severe_attack_previous_12m_con",
+  "Number_hospitalisations_for_asthma_previous_12_months_con",
+  "Pack_years",
+  "Adherence_PreTrial_quantity",
+  "Adherence_InTrial_quantity",
+  "SABA_actuations_per_day_average_PreTrial",
+  "SABA_actuations_per_day_average_InTrial",
+  "Mainteance_OCS_dose",
+  "FEV1_preBD_L_Baseline",
+  "FEV1_preBD_PCT_Baseline",
+  "FVC_preBD_L_Baseline",
+  "FEV1_postBD_L_Baseline",
+  "FEV1_postBD_PCT_Baseline",
+  "FVC_postBD_L_Baseline",
+  "FEV1_PCT_reversibility_postBD",
+  "ACQ_baseline_score_mean",
+  "Blood_Eos_baseline_x10_9_cells_per_L_zeroreplaced",
+  "FeNO_baseline_ppb",
+  "Total_IgE",
+  "Follow_up_duration_days",
+  "Number_severe_asthma_attacks_during_followup",
+  "Time_to_First_attack",
+  "Time_to_2n_attack",
+  "Time_to_3n_attack",
+  "Time_to_4n_attack",
+  "Time_to_5n_attack"
+)
+
+# Flag problematic values before conversion to numeric
+# To ensure no values of text will be returned as NA (text cannot be coerced with as.numeric)
+lapply(data_arm_age12.SIshort[numeric], function(x) unique(x[is.na(suppressWarnings(as.numeric(x)))]))
+
+# There are no problematic values, so we can use as.numeric
+data_arm_age12.SIshort <- data_arm_age12.SIshort %>% mutate(across(all_of(numeric), as.numeric))
+
+# Lastly, ensure Subject ID is a character
+data_arm_age12.SIshort$Subject_ID <- as.character(data_arm_age12.SIshort$Subject_ID)
+```
+
+
+```{r, eval = FALSE}
+# Relevel factor variables, e.g. treatment step reference = step 3 and sex reference = male
+
+data_arm_age12.SIshort$Treatment_step <- relevel(data_arm_age12.SIshort$Treatment_step, ref = "3")
+data_arm_age12.SIshort$Gender_0Female_1Male <- relevel(data_arm_age12.SIshort$Gender_0Female_1Male, ref = "1")
+```
+
+
+```{r, eval = FALSE}
+# Log-transform variables
+
+data_arm_age12.SIshort$FeNO_baseline_ppb <- log(data_arm_age12.SIshort$FeNO_baseline_ppb, base=10)
+data_arm_age12.SIshort$Total_IgE <- log(data_arm_age12.SIshort$Total_IgE, base=10)
+data_arm_age12.SIshort$Blood_Eos_baseline_x10_9_cells_per_L_zeroreplaced <- log(data_arm_age12.SIshort$Blood_Eos_baseline_x10_9_cells_per_L_zeroreplaced, base=10)
+data_arm_age12.SIshort$Follow_up_duration_days <- log(data_arm_age12.SIshort$Follow_up_duration_days)
+```
+
+
+```{r, eval = FALSE}
+# Prepare the multiple imputation model
+
+## Define method used for the imputation per variable
+method <- c("","","","","pmm","logreg","pmm","polyreg","polyreg","pmm",
+            "logreg","pmm","pmm","logreg","polr","pmm","polyreg","logreg","logreg","logreg",
+            "logreg","logreg","logreg","logreg","pmm","pmm","pmm","logreg","pmm","logreg",
+            "logreg","logreg","logreg","pmm","logreg","logreg","logreg","pmm","pmm","pmm",
+            "pmm","pmm","pmm","pmm","pmm","pmm","pmm","pmm","pmm","pmm",
+            "pmm","pmm","pmm", "pmm", "pmm")
+
+## Create a predictor matrix
+predM <- make.predictorMatrix(data_arm_age12.SIshort)
+
+## Add variables to predictor matrix that should not be used as a predictor to impute the target variable(s)
+predM[c("Sequential_number",
+        "Subject_ID",
+        "Treatment_arm",
+        "Time_to_First_attack", 
+        "Time_to_2n_attack", 
+        "Time_to_3n_attack", 
+        "Time_to_4n_attack", 
+        "Time_to_5n_attack", 
+        "Enrolled_Trial_name") , ] <- 0
+
+predM[, c("Sequential_number",
+          "Subject_ID",
+          "Treatment_arm",
+          "Time_to_First_attack",
+          "Time_to_2n_attack", 
+          "Time_to_3n_attack", 
+          "Time_to_4n_attack", 
+          "Time_to_5n_attack", 
+          "Enrolled_Trial_name")] <- 0
+```
+
+
+```{r, eval = FALSE}
+# Multiple imputation with mice
+
+## M = 10 creates 10 imputed data sets, Maxit = 30 gives 30 iterations
+## Define your method and predictor matrix, and set the seed 
+imp_data_ORACLE_final <- 
+  mice(data_arm_age12.SIshort, m = 10, maxit = 30, method = method, seed = 123, predictorMatrix = predM, printFlag = FALSE)
+
+imp_data_ORACLE_final$loggedEvents # check logged events
+```
+
+
+```{r, eval = FALSE}
+# Check convergence of the imputed data sets
+plot(imp_data_ORACLE_final)
+```
+
+
+```{r, eval = FALSE}
+# Write and save as R object file
+# Use today's date in the file name, eg. 2025-06-27 for June 27th 2025
+saveRDS(imp_data_ORACLE_final, file="xxxx-xx-xx imp_data_ORACLE_final.RData")
+
+# You can read the data again using
+imp_data_ORACLE_final <- readRDS("Network/xxxx-xx-xx imp_data_ORACLE_final.RData")
+
+```
+
+
+# Complete multiply imputed data sets 
+
+```{r, eval = FALSE}
+# For the analyses, we create two completed data sets: one in which the systematically missing values are not replaced (COMP) and there are thus no missing values, and one in which the systematically missing values are put back to NA (sysREMOVED)
+
+imp_data_ORACLE_final_COMPLETE = mice::complete(imp_data_ORACLE_final, action = "long")
+imp_data_ORACLE_final_sysREMOVED = mice::complete(imp_data_ORACLE_final, action = "long")
+```
+
+
+```{r, eval = FALSE}
+# For dataset imp_data_ORACLE_final_COMPLETE
+# Replace the imputed time-to-first-attack values with NA if there was no attack recorded
+imp_data_ORACLE_final_COMPLETE <- imp_data_ORACLE_final_COMPLETE %>%
+  mutate(Time_to_First_attack = case_when(
+    Number_severe_asthma_attacks_during_followup == 0 ~ NA,
+    Number_severe_asthma_attacks_during_followup > 0 ~ Time_to_First_attack
+  ))
+
+# Replace the imputed time-to-second-attack values with NA if there was no second attack recorded
+imp_data_ORACLE_final_COMPLETE <- imp_data_ORACLE_final_COMPLETE %>%
+  mutate(Time_to_2n_attack = case_when(
+    Number_severe_asthma_attacks_during_followup == 0 ~ NA,
+    Number_severe_asthma_attacks_during_followup == 1 ~ NA,
+    Number_severe_asthma_attacks_during_followup > 1 ~ Time_to_2n_attack
+  ))
+
+# Replace the imputed time-to-third-attack values with NA if there was no third attack recorded
+imp_data_ORACLE_final_COMPLETE <- imp_data_ORACLE_final_COMPLETE %>%
+  mutate(Time_to_3n_attack = case_when(
+    Number_severe_asthma_attacks_during_followup == 0 ~ NA,
+    Number_severe_asthma_attacks_during_followup == 1 ~ NA,
+    Number_severe_asthma_attacks_during_followup == 2 ~ NA,
+    Number_severe_asthma_attacks_during_followup > 2 ~ Time_to_3n_attack
+  ))
+
+# Replace the imputed time-to-fourth-attack values with NA if there was no fourth attack recorded
+imp_data_ORACLE_final_COMPLETE <- imp_data_ORACLE_final_COMPLETE %>%
+  mutate(Time_to_4n_attack = case_when(
+    Number_severe_asthma_attacks_during_followup == 0 ~ NA,
+    Number_severe_asthma_attacks_during_followup == 1 ~ NA,
+    Number_severe_asthma_attacks_during_followup == 2 ~ NA,
+    Number_severe_asthma_attacks_during_followup == 3 ~ NA,
+    Number_severe_asthma_attacks_during_followup > 3 ~ Time_to_4n_attack
+  ))
+
+# Replace the imputed time-to-fifth-attack values with NA if there was no fifth attack recorded
+imp_data_ORACLE_final_COMPLETE <- imp_data_ORACLE_final_COMPLETE %>%
+  mutate(Time_to_5n_attack = case_when(
+    Number_severe_asthma_attacks_during_followup == 0 ~ NA,
+    Number_severe_asthma_attacks_during_followup == 1 ~ NA,
+    Number_severe_asthma_attacks_during_followup == 2 ~ NA,
+    Number_severe_asthma_attacks_during_followup == 3 ~ NA,
+    Number_severe_asthma_attacks_during_followup == 4 ~ NA,
+    Number_severe_asthma_attacks_during_followup > 4 ~ Time_to_5n_attack
+  ))
+
+```
+
+
+```{r, eval = FALSE}
+# For dataset imp_data_ORACLE_final_sysREMOVED
+# Replace the imputed time-to-first-attack values with NA if there was no attack recorded
+imp_data_ORACLE_final_sysREMOVED <- imp_data_ORACLE_final_sysREMOVED %>%
+  mutate(Time_to_First_attack = case_when(
+    Number_severe_asthma_attacks_during_followup == 0 ~ NA,
+    Number_severe_asthma_attacks_during_followup > 0 ~ Time_to_First_attack
+  ))
+
+# Replace the imputed time-to-second-attack values with NA if there was no second attack recorded
+imp_data_ORACLE_final_sysREMOVED <- imp_data_ORACLE_final_sysREMOVED %>%
+  mutate(Time_to_2n_attack = case_when(
+    Number_severe_asthma_attacks_during_followup == 0 ~ NA,
+    Number_severe_asthma_attacks_during_followup == 1 ~ NA,
+    Number_severe_asthma_attacks_during_followup > 1 ~ Time_to_2n_attack
+  ))
+
+# Replace the imputed time-to-third-attack values with NA if there was no third attack recorded
+imp_data_ORACLE_final_sysREMOVED <- imp_data_ORACLE_final_sysREMOVED %>%
+  mutate(Time_to_3n_attack = case_when(
+    Number_severe_asthma_attacks_during_followup == 0 ~ NA,
+    Number_severe_asthma_attacks_during_followup == 1 ~ NA,
+    Number_severe_asthma_attacks_during_followup == 2 ~ NA,
+    Number_severe_asthma_attacks_during_followup > 2 ~ Time_to_3n_attack
+  ))
+
+# Replace the imputed time-to-fourth-attack values with NA if there was no fourth attack recorded
+imp_data_ORACLE_final_sysREMOVED <- imp_data_ORACLE_final_sysREMOVED %>%
+  mutate(Time_to_4n_attack = case_when(
+    Number_severe_asthma_attacks_during_followup == 0 ~ NA,
+    Number_severe_asthma_attacks_during_followup == 1 ~ NA,
+    Number_severe_asthma_attacks_during_followup == 2 ~ NA,
+    Number_severe_asthma_attacks_during_followup == 3 ~ NA,
+    Number_severe_asthma_attacks_during_followup > 3 ~ Time_to_4n_attack
+  ))
+
+# Replace the imputed time-to-fifth-attack values with NA if there was no fifth attack recorded
+imp_data_ORACLE_final_sysREMOVED <- imp_data_ORACLE_final_sysREMOVED %>%
+  mutate(Time_to_5n_attack = case_when(
+    Number_severe_asthma_attacks_during_followup == 0 ~ NA,
+    Number_severe_asthma_attacks_during_followup == 1 ~ NA,
+    Number_severe_asthma_attacks_during_followup == 2 ~ NA,
+    Number_severe_asthma_attacks_during_followup == 3 ~ NA,
+    Number_severe_asthma_attacks_during_followup == 4 ~ NA,
+    Number_severe_asthma_attacks_during_followup > 4 ~ Time_to_5n_attack
+  ))
+
+```
+
+
+```{r, eval = FALSE}
+# For dataset data_arm_age12.SIshort
+# Complete the time-to-first-event variable with the maximum follow-up duration if no attack occurred during follow-up and save into new variable Time_1st_event_FU_max
+
+data_arm_age12.SIshort$Follow_up_duration_days <- 
+  as.numeric(data_arm_age12.SIshort$Follow_up_duration_days) # make sure the variable has the correct data type
+
+data_arm_age12.SIshort <- data_arm_age12.SIshort %>%
+  mutate(Time_1st_event_FU_max =
+           case_when(
+             Number_severe_asthma_attacks_during_followup == 0 ~ Follow_up_duration_days,
+             Number_severe_asthma_attacks_during_followup > 0 ~ Time_to_First_attack
+           ), .after = Time_to_5n_attack)
+```
+
+
+```{r, eval = FALSE}
+# For dataset imp_data_ORACLE_final_COMPLETE
+# Complete the time-to-first-event variable with the maximum follow-up duration if no attack occurred during follow-up and save into new variable Time_1st_event_FU_max
+
+imp_data_ORACLE_final_COMPLETE$Follow_up_duration_days <- 
+  as.numeric(imp_data_ORACLE_final_COMPLETE$Follow_up_duration_days)
+
+imp_data_ORACLE_final_COMPLETE <- imp_data_ORACLE_final_COMPLETE %>%
+  mutate(Time_1st_event_FU_max =
+           case_when(
+             Number_severe_asthma_attacks_during_followup == 0 ~ Follow_up_duration_days,
+             Number_severe_asthma_attacks_during_followup > 0 ~ Time_to_First_attack
+           ), .after = Time_to_5n_attack)
+```
+
+
+```{r, eval = FALSE}
+# For dataset imp_data_ORACLE_final_sysREMOVED
+# Complete the time-to-first-event variable with the maximum follow-up duration if no attack occurred during follow-up and save into new variable Time_1st_event_FU_max
+imp_data_ORACLE_final_sysREMOVED$Follow_up_duration_days <- 
+  as.numeric(imp_data_ORACLE_final_sysREMOVED$Follow_up_duration_days)
+
+imp_data_ORACLE_final_sysREMOVED <- imp_data_ORACLE_final_sysREMOVED %>%
+  mutate(Time_1st_event_FU_max =
+           case_when(
+             Number_severe_asthma_attacks_during_followup == 0 ~ Follow_up_duration_days,
+             Number_severe_asthma_attacks_during_followup > 0 ~ Time_to_First_attack
+           ), .after = Time_to_5n_attack)
+```
+
+
+```{r, eval = FALSE}
+# This part of the R code replaces the systematically missing values, that are imputed using multiple imputation, and puts the imputed values back to NA
+
+# We need to find a numerical value that is not present in the dataset
+which(imp_data_ORACLE_final_sysREMOVED == 8888, arr.ind = TRUE) # This will return a matrix showing the row and column indices where 8888 is found
+
+# Using the non-imputed, original data set data_arm_age12.SIshort, create separate datasets per trial and replace missing values with 8888 if the column was completely missing (100% NA)
+
+# AZISAST
+data_AZISAST <- data_arm_age12.SIshort %>% filter(Enrolled_Trial_name == "AZISAST")
+replace_8888_AZI <- function(data_AZISAST) {
+  for (col in colnames(data_AZISAST)) {
+    if (all(is.na(data_AZISAST[[col]]))) {
+      data_AZISAST[[col]] <- ifelse(is.na(data_AZISAST[[col]]), 8888, data_AZISAST[[col]])
+    }
+  }
+  return(data_AZISAST)
+}
+data_AZISAST <- replace_8888_AZI(data_AZISAST)
+
+# BENRAP2B
+data_BENRAP2B <- data_arm_age12.SIshort %>% filter(Enrolled_Trial_name == "BENRAP2B")
+replace_8888_BEN <- function(data_BENRAP2B) {
+  for (col in colnames(data_BENRAP2B)) {
+    if (all(is.na(data_BENRAP2B[[col]]))) {
+      data_BENRAP2B[[col]] <- ifelse(is.na(data_BENRAP2B[[col]]), 8888, data_BENRAP2B[[col]])
+    }
+  }
+  return(data_BENRAP2B)
+}
+data_BENRAP2B <- replace_8888_BEN(data_BENRAP2B)
+
+# CAPTAIN
+data_CAPTAIN <- data_arm_age12.SIshort %>% filter(Enrolled_Trial_name == "CAPTAIN")
+replace_8888_CAP <- function(data_CAPTAIN) {
+  for (col in colnames(data_CAPTAIN)) {
+    if (all(is.na(data_CAPTAIN[[col]]))) {
+      data_CAPTAIN[[col]] <- ifelse(is.na(data_CAPTAIN[[col]]), 8888, data_CAPTAIN[[col]])
+    }
+  }
+  return(data_CAPTAIN)
+}
+data_CAPTAIN <- replace_8888_CAP(data_CAPTAIN)
+
+# COSTA
+data_COSTA <- data_arm_age12.SIshort %>% filter(Enrolled_Trial_name == "COSTA")
+replace_8888_COS <- function(data_COSTA) {
+  for (col in colnames(data_COSTA)) {
+    if (all(is.na(data_COSTA[[col]]))) {
+      data_COSTA[[col]] <- ifelse(is.na(data_COSTA[[col]]), 8888, data_COSTA[[col]])
+    }
+  }
+  return(data_COSTA)
+}
+data_COSTA <- replace_8888_COS(data_COSTA)
+
+# DREAM
+data_DREAM <- data_arm_age12.SIshort %>% filter(Enrolled_Trial_name == "DREAM")
+replace_8888_DRE <- function(data_DREAM) {
+  for (col in colnames(data_DREAM)) {
+    if (all(is.na(data_DREAM[[col]]))) {
+      data_DREAM[[col]] <- ifelse(is.na(data_DREAM[[col]]), 8888, data_DREAM[[col]])
+    }
+  }
+  return(data_DREAM)
+}
+data_DREAM <- replace_8888_DRE(data_DREAM)
+
+# DRI12544
+data_DRI12544 <- data_arm_age12.SIshort %>% filter(Enrolled_Trial_name == "DRI12544")
+replace_8888_DRI <- function(data_DRI12544) {
+  for (col in colnames(data_DRI12544)) {
+    if (all(is.na(data_DRI12544[[col]]))) {
+      data_DRI12544[[col]] <- ifelse(is.na(data_DRI12544[[col]]), 8888, data_DRI12544[[col]])
+    }
+  }
+  return(data_DRI12544)
+}
+data_DRI12544 <- replace_8888_DRI(data_DRI12544)
+
+# EXTRA
+data_EXTRA <- data_arm_age12.SIshort %>% filter(Enrolled_Trial_name == "EXTRA")
+replace_8888_EXT <- function(data_EXTRA) {
+  for (col in colnames(data_EXTRA)) {
+    if (all(is.na(data_EXTRA[[col]]))) {
+      data_EXTRA[[col]] <- ifelse(is.na(data_EXTRA[[col]]), 8888, data_EXTRA[[col]])
+    }
+  }
+  return(data_EXTRA)
+}
+data_EXTRA <- replace_8888_EXT(data_EXTRA)
+
+# LAVOLTA 1
+data_LAVOLTA1 <- data_arm_age12.SIshort %>% filter(Enrolled_Trial_name == "LAVOLTA_1")
+replace_8888_LA1 <- function(data_LAVOLTA1) {
+  for (col in colnames(data_LAVOLTA1)) {
+    if (all(is.na(data_LAVOLTA1[[col]]))) {
+      data_LAVOLTA1[[col]] <- ifelse(is.na(data_LAVOLTA1[[col]]), 8888, data_LAVOLTA1[[col]])
+    }
+  }
+  return(data_LAVOLTA1)
+}
+data_LAVOLTA1 <- replace_8888_LA1(data_LAVOLTA1)
+
+# LAVOLTA 2
+data_LAVOLTA2 <- data_arm_age12.SIshort %>% filter(Enrolled_Trial_name == "LAVOLTA_2")
+replace_8888_LA2 <- function(data_LAVOLTA2) {
+  for (col in colnames(data_LAVOLTA2)) {
+    if (all(is.na(data_LAVOLTA2[[col]]))) {
+      data_LAVOLTA2[[col]] <- ifelse(is.na(data_LAVOLTA2[[col]]), 8888, data_LAVOLTA2[[col]])
+    }
+  }
+  return(data_LAVOLTA2)
+}
+data_LAVOLTA2 <- replace_8888_LA2(data_LAVOLTA2)
+
+# LUSTER 1
+data_LUSTER1 <- data_arm_age12.SIshort %>% filter(Enrolled_Trial_name == "LUSTER_1")
+replace_8888_LU1 <- function(data_LUSTER1) {
+  for (col in colnames(data_LUSTER1)) {
+    if (all(is.na(data_LUSTER1[[col]]))) {
+      data_LUSTER1[[col]] <- ifelse(is.na(data_LUSTER1[[col]]), 8888, data_LUSTER1[[col]])
+    }
+  }
+  return(data_LUSTER1)
+}
+data_LUSTER1 <- replace_8888_LU1(data_LUSTER1)
+
+# LUSTER 2
+data_LUSTER2 <- data_arm_age12.SIshort %>% filter(Enrolled_Trial_name == "LUSTER_2")
+replace_8888_LU2 <- function(data_LUSTER2) {
+  for (col in colnames(data_LUSTER2)) {
+    if (all(is.na(data_LUSTER2[[col]]))) {
+      data_LUSTER2[[col]] <- ifelse(is.na(data_LUSTER2[[col]]), 8888, data_LUSTER2[[col]])
+    }
+  }
+  return(data_LUSTER2)
+}
+data_LUSTER2 <- replace_8888_LU2(data_LUSTER2)
+
+# LUTE 
+data_LUTE <- data_arm_age12.SIshort %>% filter(Enrolled_Trial_name == "LUTE")
+replace_8888_LUT <- function(data_LUTE) {
+  for (col in colnames(data_LUTE)) {
+    if (all(is.na(data_LUTE[[col]]))) {
+      data_LUTE[[col]] <- ifelse(is.na(data_LUTE[[col]]), 8888, data_LUTE[[col]])
+    }
+  }
+  return(data_LUTE)
+}
+data_LUTE <- replace_8888_LUT(data_LUTE)
+
+# MILLY
+data_MILLY <- data_arm_age12.SIshort %>% filter(Enrolled_Trial_name == "MILLY")
+replace_8888_MIL <- function(data_MILLY) {
+  for (col in colnames(data_MILLY)) {
+    if (all(is.na(data_MILLY[[col]]))) {
+      data_MILLY[[col]] <- ifelse(is.na(data_MILLY[[col]]), 8888, data_MILLY[[col]])
+    }
+  }
+  return(data_MILLY)
+}
+data_MILLY <- replace_8888_MIL(data_MILLY)
+
+# NAVIGATOR
+data_NAVIGATOR <- data_arm_age12.SIshort %>% filter(Enrolled_Trial_name == "NAVIGATOR")
+replace_8888_NAV <- function(data_NAVIGATOR) {
+  for (col in colnames(data_NAVIGATOR)) {
+    if (all(is.na(data_NAVIGATOR[[col]]))) {
+      data_NAVIGATOR[[col]] <- ifelse(is.na(data_NAVIGATOR[[col]]), 8888, data_NAVIGATOR[[col]])
+    }
+  }
+  return(data_NAVIGATOR)
+}
+data_NAVIGATOR <- replace_8888_NAV(data_NAVIGATOR)
+
+# Novel_START
+data_Novel_START <- data_arm_age12.SIshort %>% filter(Enrolled_Trial_name == "Novel_START")
+replace_8888_NOV <- function(data_Novel_START) {
+  for (col in colnames(data_Novel_START)) {
+    if (all(is.na(data_Novel_START[[col]]))) {
+      data_Novel_START[[col]] <- ifelse(is.na(data_Novel_START[[col]]), 8888, data_Novel_START[[col]])
+    }
+  }
+  return(data_Novel_START)
+}
+data_Novel_START <- replace_8888_NOV(data_Novel_START)
+
+# PACT
+data_PACT <- data_arm_age12.SIshort %>% filter(Enrolled_Trial_name == "PACT")
+replace_8888_PAC <- function(data_PACT) {
+  for (col in colnames(data_PACT)) {
+    if (all(is.na(data_PACT[[col]]))) {
+      data_PACT[[col]] <- ifelse(is.na(data_PACT[[col]]), 8888, data_PACT[[col]])
+    }
+  }
+  return(data_PACT)
+}
+data_PACT <- replace_8888_PAC(data_PACT)
+
+# PRACTICAL
+data_PRACTICAL <- data_arm_age12.SIshort %>% filter(Enrolled_Trial_name == "PRACTICAL")
+replace_8888_PRA <- function(data_PRACTICAL) {
+  for (col in colnames(data_PRACTICAL)) {
+    if (all(is.na(data_PRACTICAL[[col]]))) {
+      data_PRACTICAL[[col]] <- ifelse(is.na(data_PRACTICAL[[col]]), 8888, data_PRACTICAL[[col]])
+    }
+  }
+  return(data_PRACTICAL)
+}
+data_PRACTICAL <- replace_8888_PRA(data_PRACTICAL)
+
+# PATHWAY
+data_PATHWAY <- data_arm_age12.SIshort %>% filter(Enrolled_Trial_name == "PATHWAY")
+replace_8888_PAT <- function(data_PATHWAY) {
+  for (col in colnames(data_PATHWAY)) {
+    if (all(is.na(data_PATHWAY[[col]]))) {
+      data_PATHWAY[[col]] <- ifelse(is.na(data_PATHWAY[[col]]), 8888, data_PATHWAY[[col]])
+    }
+  }
+  return(data_PATHWAY)
+}
+data_PATHWAY <- replace_8888_PAT(data_PATHWAY)
+
+# QUEST
+data_QUEST <- data_arm_age12.SIshort %>% filter(Enrolled_Trial_name == "QUEST")
+replace_8888_QUE <- function(data_QUEST) {
+  for (col in colnames(data_QUEST)) {
+    if (all(is.na(data_QUEST[[col]]))) {
+      data_QUEST[[col]] <- ifelse(is.na(data_QUEST[[col]]), 8888, data_QUEST[[col]])
+    }
+  }
+  return(data_QUEST)
+}
+data_QUEST <- replace_8888_QUE(data_QUEST)
+
+# STRATOS 1
+data_STRATOS1 <- data_arm_age12.SIshort %>% filter(Enrolled_Trial_name == "STRATOS_1")
+replace_8888_ST1 <- function(data_STRATOS1) {
+  for (col in colnames(data_STRATOS1)) {
+    if (all(is.na(data_STRATOS1[[col]]))) {
+      data_STRATOS1[[col]] <- ifelse(is.na(data_STRATOS1[[col]]), 8888, data_STRATOS1[[col]])
+    }
+  }
+  return(data_STRATOS1)
+}
+data_STRATOS1 <- replace_8888_ST1(data_STRATOS1)
+
+# STRATOS 2
+data_STRATOS2 <- data_arm_age12.SIshort %>% filter(Enrolled_Trial_name == "STRATOS_2")
+replace_8888_ST2 <- function(data_STRATOS2) {
+  for (col in colnames(data_STRATOS2)) {
+    if (all(is.na(data_STRATOS2[[col]]))) {
+      data_STRATOS2[[col]] <- ifelse(is.na(data_STRATOS2[[col]]), 8888, data_STRATOS2[[col]])
+    }
+  }
+  return(data_STRATOS2)
+}
+data_STRATOS2 <- replace_8888_ST2(data_STRATOS2)
+
+# VERSE
+data_VERSE <- data_arm_age12.SIshort %>% filter(Enrolled_Trial_name == "VERSE")
+replace_8888_VER <- function(data_VERSE) {
+  for (col in colnames(data_VERSE)) {
+    if (all(is.na(data_VERSE[[col]]))) {
+      data_VERSE[[col]] <- ifelse(is.na(data_VERSE[[col]]), 8888, data_VERSE[[col]])
+    }
+  }
+  return(data_VERSE)
+}
+data_VERSE <- replace_8888_VER(data_VERSE)
+
+```
+
+```{r, eval = FALSE}
+# Check variables and column numbers for one of the trial data sets 
+## Completely missing variables should now have only 8888 as value
+
+tibble(
+  ColumnNumber = seq_along(data_VERSE),
+  VariableName = names(data_VERSE)
+  ) %>% print(n = 100)
+
+table(data_VERSE$Previous_nasal_polypectomy_0no_1yes_9999notknown)
+
+view(data_VERSE)
+```
+
+
+```{r, eval = FALSE}
+# Assign data types factor, numeric and character in every new data set
+
+# Make sure all variables have the correct data type, e.g. factor, numeric or character
+
+factors <- c(
+  "Enrolled_Trial_name",
+  "Treatment_arm",
+  "Gender_0Female_1Male",
+  "Ethnicity",
+  "Region",
+  "Treatment_step",
+  "Any_severe_attack_previous_12m_0no_1yes",
+  "Previous_ICU_or_intubation_0no_1yes",
+  "Smoking_0never_1ex_2current",
+  "Psy_disease_type_0none_1depressionORanxiety_2psychosis_3nontobaccosubstanceabuse_4other_9999notknown",
+  "Atopy_history_0no_1yes_9999notknown",
+  "Eczema_0no_1yes_9999notknown",
+  "AllergicRhinitis__0no_1yes_9999notknown",
+  "Airborne_allergen_sensitisation_on_testing_0no_1yes_9999notknown",
+  "Chronic_Rhinosinusitis_0no_1yes_9999notknown",
+  "SABA_prescribed__0no_1yes",
+  "Any_ICS_prescribed_0no_1yes",
+  "Nasal_polyposis_0no_1yes_9999notknown",
+  "Previous_nasal_polypectomy_0no_1yes_9999notknown",
+  "LABA_prescribed_0no_1yes",
+  "LAMA_prescribed__0no_1yes",
+  "maintenance_OCS_prescribed__0no_1yes",
+  "Montelukast_prescribed__0no_1yes",
+  "Theophylline_prescribed__0no_1yes",
+  "Intranasal_seroid_prescribed__0no_1yes"
+)
+
+numeric <- c(
+  "Sequential_number",
+  "Age",
+  "BMI",
+  "Number_severe_attack_previous_12m_con",
+  "Number_hospitalisations_for_asthma_previous_12_months_con",
+  "Pack_years",
+  "Adherence_PreTrial_quantity",
+  "Adherence_InTrial_quantity",
+  "SABA_actuations_per_day_average_PreTrial",
+  "SABA_actuations_per_day_average_InTrial",
+  "Mainteance_OCS_dose",
+  "FEV1_preBD_L_Baseline",
+  "FEV1_preBD_PCT_Baseline",
+  "FVC_preBD_L_Baseline",
+  "FEV1_postBD_L_Baseline",
+  "FEV1_postBD_PCT_Baseline",
+  "FVC_postBD_L_Baseline",
+  "FEV1_PCT_reversibility_postBD",
+  "ACQ_baseline_score_mean",
+  "Blood_Eos_baseline_x10_9_cells_per_L_zeroreplaced",
+  "FeNO_baseline_ppb",
+  "Total_IgE",
+  "Follow_up_duration_days",
+  "Number_severe_asthma_attacks_during_followup",
+  "Time_to_First_attack",
+  "Time_to_2n_attack",
+  "Time_to_3n_attack",
+  "Time_to_4n_attack",
+  "Time_to_5n_attack",
+  "Time_1st_event_FU_max"
+)
+
+# Flag problematic values before conversion to numeric
+# To ensure no values of text will be returned as NA (text cannot be coerced with as.numeric)
+lapply(data_VERSE[numeric], function(x) unique(x[is.na(suppressWarnings(as.numeric(x)))]))
+
+# factor
+data_AZISAST <- data_AZISAST %>% 
+  mutate(across(all_of(factors), ~ factor(.x, levels = unique(.x))))
+
+data_BENRAP2B <- data_BENRAP2B %>% 
+  mutate(across(all_of(factors), ~ factor(.x, levels = unique(.x))))
+
+data_CAPTAIN <- data_CAPTAIN %>% 
+  mutate(across(all_of(factors), ~ factor(.x, levels = unique(.x))))
+
+data_COSTA <- data_COSTA %>% 
+  mutate(across(all_of(factors), ~ factor(.x, levels = unique(.x))))
+
+data_DREAM <- data_DREAM %>% 
+  mutate(across(all_of(factors), ~ factor(.x, levels = unique(.x))))
+
+data_DRI12544 <- data_DRI12544 %>% 
+  mutate(across(all_of(factors), ~ factor(.x, levels = unique(.x))))
+
+data_EXTRA <- data_EXTRA %>% 
+  mutate(across(all_of(factors), ~ factor(.x, levels = unique(.x))))
+
+data_LAVOLTA1 <- data_LAVOLTA1 %>% 
+  mutate(across(all_of(factors), ~ factor(.x, levels = unique(.x))))
+
+data_LAVOLTA2 <- data_LAVOLTA2 %>% 
+  mutate(across(all_of(factors), ~ factor(.x, levels = unique(.x))))
+
+data_LUSTER1 <- data_LUSTER1 %>% 
+  mutate(across(all_of(factors), ~ factor(.x, levels = unique(.x))))
+
+data_LUSTER2 <- data_LUSTER2 %>% 
+  mutate(across(all_of(factors), ~ factor(.x, levels = unique(.x))))
+
+data_LUTE <- data_LUTE %>% 
+  mutate(across(all_of(factors), ~ factor(.x, levels = unique(.x))))
+
+data_MILLY <- data_MILLY %>% 
+  mutate(across(all_of(factors), ~ factor(.x, levels = unique(.x))))
+
+data_NAVIGATOR <- data_NAVIGATOR %>% 
+  mutate(across(all_of(factors), ~ factor(.x, levels = unique(.x))))
+
+data_Novel_START <- data_Novel_START %>% 
+  mutate(across(all_of(factors), ~ factor(.x, levels = unique(.x))))
+
+data_PACT <- data_PACT %>% 
+  mutate(across(all_of(factors), ~ factor(.x, levels = unique(.x))))
+
+data_PATHWAY <- data_PATHWAY %>% 
+  mutate(across(all_of(factors), ~ factor(.x, levels = unique(.x))))
+
+data_PRACTICAL <- data_PRACTICAL %>% 
+  mutate(across(all_of(factors), ~ factor(.x, levels = unique(.x))))
+
+data_QUEST <- data_QUEST %>% 
+  mutate(across(all_of(factors), ~ factor(.x, levels = unique(.x))))
+
+data_STRATOS1 <- data_STRATOS1 %>% 
+  mutate(across(all_of(factors), ~ factor(.x, levels = unique(.x))))
+
+data_STRATOS2 <- data_STRATOS2 %>% 
+  mutate(across(all_of(factors), ~ factor(.x, levels = unique(.x))))
+
+data_VERSE <- data_VERSE %>% 
+  mutate(across(all_of(factors), ~ factor(.x, levels = unique(.x))))
+
+
+# numeric
+data_AZISAST <- data_AZISAST %>% mutate(across(all_of(numeric), as.numeric))
+data_BENRAP2B <- data_BENRAP2B %>% mutate(across(all_of(numeric), as.numeric))
+data_CAPTAIN <- data_CAPTAIN %>% mutate(across(all_of(numeric), as.numeric))
+data_COSTA <- data_COSTA %>% mutate(across(all_of(numeric), as.numeric))
+data_DREAM <- data_DREAM %>% mutate(across(all_of(numeric), as.numeric))
+data_DRI12544 <- data_DRI12544 %>% mutate(across(all_of(numeric), as.numeric))
+data_EXTRA <- data_EXTRA %>% mutate(across(all_of(numeric), as.numeric))
+data_LAVOLTA1 <- data_LAVOLTA1 %>% mutate(across(all_of(numeric), as.numeric))
+data_LAVOLTA2 <- data_LAVOLTA2 %>% mutate(across(all_of(numeric), as.numeric))
+data_LUSTER1 <- data_LUSTER1 %>% mutate(across(all_of(numeric), as.numeric))
+data_LUSTER2 <- data_LUSTER2 %>% mutate(across(all_of(numeric), as.numeric))
+data_LUTE <- data_LUTE %>% mutate(across(all_of(numeric), as.numeric))
+data_MILLY <- data_MILLY %>% mutate(across(all_of(numeric), as.numeric))
+data_NAVIGATOR <- data_NAVIGATOR %>% mutate(across(all_of(numeric), as.numeric))
+data_Novel_START <- data_Novel_START %>% mutate(across(all_of(numeric), as.numeric))
+data_PACT <- data_PACT %>% mutate(across(all_of(numeric), as.numeric))
+data_PATHWAY <- data_PATHWAY %>% mutate(across(all_of(numeric), as.numeric))
+data_PRACTICAL <- data_PRACTICAL %>% mutate(across(all_of(numeric), as.numeric))
+data_QUEST <- data_QUEST %>% mutate(across(all_of(numeric), as.numeric))
+data_STRATOS1 <- data_STRATOS1 %>% mutate(across(all_of(numeric), as.numeric))
+data_STRATOS2 <- data_STRATOS2 %>% mutate(across(all_of(numeric), as.numeric))
+data_VERSE <- data_VERSE %>% mutate(across(all_of(numeric), as.numeric))
+
+# character
+characters <- "Subject_ID"
+data_AZISAST <- data_AZISAST %>% mutate(across(all_of(characters), as.character))
+data_BENRAP2B <- data_BENRAP2B %>% mutate(across(all_of(characters), as.character))
+data_CAPTAIN <- data_CAPTAIN %>% mutate(across(all_of(characters), as.character))
+data_COSTA <- data_COSTA %>% mutate(across(all_of(characters), as.character))
+data_DREAM <- data_DREAM %>% mutate(across(all_of(characters), as.character))
+data_DRI12544 <- data_DRI12544 %>% mutate(across(all_of(characters), as.character))
+data_EXTRA <- data_EXTRA %>% mutate(across(all_of(characters), as.character))
+data_LAVOLTA1 <- data_LAVOLTA1 %>% mutate(across(all_of(characters), as.character))
+data_LAVOLTA2 <- data_LAVOLTA2 %>% mutate(across(all_of(characters), as.character))
+data_LUSTER1 <- data_LUSTER1 %>% mutate(across(all_of(characters), as.character))
+data_LUSTER2 <- data_LUSTER2 %>% mutate(across(all_of(characters), as.character))
+data_LUTE <- data_LUTE %>% mutate(across(all_of(characters), as.character))
+data_MILLY <- data_MILLY %>% mutate(across(all_of(characters), as.character))
+data_NAVIGATOR <- data_NAVIGATOR %>% mutate(across(all_of(characters), as.character))
+data_Novel_START <- data_Novel_START %>% mutate(across(all_of(characters), as.character))
+data_PACT <- data_PACT %>% mutate(across(all_of(characters), as.character))
+data_PATHWAY <- data_PATHWAY %>% mutate(across(all_of(characters), as.character))
+data_PRACTICAL <- data_PRACTICAL %>% mutate(across(all_of(characters), as.character))
+data_QUEST <- data_QUEST %>% mutate(across(all_of(characters), as.character))
+data_STRATOS1 <- data_STRATOS1 %>% mutate(across(all_of(characters), as.character))
+data_STRATOS2 <- data_STRATOS2 %>% mutate(across(all_of(characters), as.character))
+data_VERSE <- data_VERSE %>% mutate(across(all_of(characters), as.character))
+
+```
+
+
+```{r, eval = FALSE}
+# List all trials together in the correct order
+data_list <- list(data_Novel_START, 
+                  data_PRACTICAL, 
+                  data_AZISAST, 
+                  data_EXTRA, 
+                  data_COSTA, 
+                  data_PACT, 
+                  data_LAVOLTA1, 
+                  data_LAVOLTA2,
+                  data_MILLY, 
+                  data_LUTE, 
+                  data_VERSE, 
+                  data_STRATOS1, 
+                  data_STRATOS2, 
+                  data_BENRAP2B, 
+                  data_DRI12544, 
+                  data_QUEST, 
+                  data_LUSTER1, 
+                  data_LUSTER2, 
+                  data_CAPTAIN, 
+                  data_DREAM, 
+                  data_PATHWAY, 
+                  data_NAVIGATOR)
+
+# Combine them into a single data set
+data_arm_age12_8888 <- bind_rows(data_list)
+```
+
+
+```{r, eval = FALSE}
+# Put the systematically missing values back to NA
+
+for (i in 3:58) {  # Loop through columns 3 to 58
+  i_8888 <- i - 2  # Corresponding column index in data_arm_age12_8888
+  
+  rows_to_replace <- data_arm_age12_8888[, i_8888] == 8888 | data_arm_age12_8888[, i_8888] == "8888"
+  seq_numbers_to_replace <- data_arm_age12_8888[rows_to_replace, "Sequential_number"]
+  
+  imp_data_ORACLE_final_sysREMOVED[imp_data_ORACLE_final_sysREMOVED$Sequential_number %in% seq_numbers_to_replace, i] <- NA
+}
+
+```
+
+
+```{r, eval = FALSE}
+# Add a variable for the calculated FEV1/FVC ratio for analyses later
+imp_data_ORACLE_final_COMPLETE <- imp_data_ORACLE_final_COMPLETE %>%
+  mutate(FEV1_FVC_ratio =
+           (FEV1_preBD_L_Baseline / FVC_preBD_L_Baseline)*100, .after = FEV1_PCT_reversibility_postBD)
+
+summary(imp_data_ORACLE_final_COMPLETE$FEV1_preBD_L_Baseline) # check the new variable
+
+imp_data_ORACLE_final_sysREMOVED <- imp_data_ORACLE_final_sysREMOVED %>%
+  mutate(FEV1_FVC_ratio =
+           (FEV1_preBD_L_Baseline / FVC_preBD_L_Baseline)*100, .after = FEV1_PCT_reversibility_postBD)
+
+summary(imp_data_ORACLE_final_sysREMOVED$FEV1_preBD_L_Baseline) # check the new variable
+```
+
+```{r, eval = FALSE}
+# For the TLRM rebuttal, we included a new variable for ENT disorders
+
+# CRSwNP (Nasal polyposis or history of nasal polypectomy)
+imp_data_ORACLE_final_COMPLETE <- imp_data_ORACLE_final_COMPLETE %>% 
+  mutate(CRSwNP = case_when(
+    #Identifying as "Yes" for patients with NP
+    Nasal_polyposis_0no_1yes_9999notknown == 1 ~ 1,
+    #Identifying as "Yes" for patients with polypectomy history
+    Previous_nasal_polypectomy_0no_1yes_9999notknown == 1 ~ 1,
+    #Identifying as "No" for patients without NP
+    Nasal_polyposis_0no_1yes_9999notknown == 0 ~ 0,
+    #Identifying as NA for patients that NP was not assessed
+    is.na(Nasal_polyposis_0no_1yes_9999notknown) ~ NA,
+    TRUE ~ NA
+  ))
+
+imp_data_ORACLE_final_COMPLETE$CRSwNP <- as.factor(imp_data_ORACLE_final_COMPLETE$CRSwNP)
+
+# CRSsNP (No CRSwNP + No history of nasal polypectomy + CRS == "Yes" + Nasal polyposis was assessed)
+imp_data_ORACLE_final_COMPLETE <- imp_data_ORACLE_final_COMPLETE %>% 
+  mutate(CRSsNP = case_when(
+    #Identifying as NA for patients in whom nasal polyposis was not assessed
+    is.na(CRSwNP) ~ NA,
+    #Identifying as NA for patients in whom Chronic_Rhinosinusitis was not assessed
+    is.na(Chronic_Rhinosinusitis_0no_1yes_9999notknown) ~ NA,
+    #Identifying as "Yes" for patients with CRSwNP
+    CRSwNP == 1 ~ 0,
+    #Identifying as "No" for patients without Chronic rhinosinusitis
+    Chronic_Rhinosinusitis_0no_1yes_9999notknown == 0 ~ 0,
+    #Identifying as "Yes" for patients with Chronic rhinosinusitis
+    Chronic_Rhinosinusitis_0no_1yes_9999notknown == 1 ~ 1,
+    TRUE ~ NA
+  ))
+
+imp_data_ORACLE_final_COMPLETE$CRSsNP <- as.factor(imp_data_ORACLE_final_COMPLETE$CRSsNP)
+
+
+# CRSwNP (Nasal polyposis or history of nasal polypectomy)
+imp_data_ORACLE_final_sysREMOVED <- imp_data_ORACLE_final_sysREMOVED %>% 
+  mutate(CRSwNP = case_when(
+    #Identifying as "Yes" for patients with NP
+    Nasal_polyposis_0no_1yes_9999notknown == 1 ~ 1,
+    #Identifying as "Yes" for patients with polypectomy history
+    Previous_nasal_polypectomy_0no_1yes_9999notknown == 1 ~ 1,
+    #Identifying as "No" for patients without NP
+    Nasal_polyposis_0no_1yes_9999notknown == 0 ~ 0,
+    #Identifying as NA for patients that NP was not assessed
+    is.na(Nasal_polyposis_0no_1yes_9999notknown) ~ NA,
+    TRUE ~ NA
+  ))
+
+imp_data_ORACLE_final_sysREMOVED$CRSwNP <- as.factor(imp_data_ORACLE_final_sysREMOVED$CRSwNP)
+
+# CRSsNP (No CRSwNP + No history of nasal polypectomy + CRS == "Yes" + Nasal polyposis was assessed)
+imp_data_ORACLE_final_sysREMOVED <- imp_data_ORACLE_final_sysREMOVED %>% 
+  mutate(CRSsNP = case_when(
+    #Identifying as NA for patients in whom nasal polyposis was not assessed
+    is.na(CRSwNP) ~ NA,
+    #Identifying as NA for patients in whom Chronic_Rhinosinusitis was not assessed
+    is.na(Chronic_Rhinosinusitis_0no_1yes_9999notknown) ~ NA,
+    #Identifying as "Yes" for patients with CRSwNP
+    CRSwNP == 1 ~ 0,
+    #Identifying as "No" for patients without Chronic rhinosinusitis
+    Chronic_Rhinosinusitis_0no_1yes_9999notknown == 0 ~ 0,
+    #Identifying as "Yes" for patients with Chronic rhinosinusitis
+    Chronic_Rhinosinusitis_0no_1yes_9999notknown == 1 ~ 1,
+    TRUE ~ NA
+  ))
+
+imp_data_ORACLE_final_sysREMOVED$CRSsNP <- as.factor(imp_data_ORACLE_final_sysREMOVED$CRSsNP)
+
+# Check the new variable in a table
+table(imp_data_ORACLE_final_COMPLETE$CRSwNP, imp_data_ORACLE_final_COMPLETE$CRSsNP)
+table(imp_data_ORACLE_final_sysREMOVED$CRSwNP, imp_data_ORACLE_final_sysREMOVED$CRSsNP)
+```
+
+
+```{r, eval = FALSE}
+# Check variables and variable type for the newly completed dataset
+
+variable_type <- data.frame(
+  str = sapply(imp_data_ORACLE_final_COMPLETE, function(x) {
+    capture.output(str(x, give.attr = FALSE, max.level = 1))[1]
+  }),
+  stringsAsFactors = FALSE
+)
+
+View(variable_type)
+```
+
+
+```{r, eval = FALSE}
+# Write and save as CSV file
+# Use today's date in the file name, eg. 2025-06-27 for June 27th 2025
+write.csv(imp_data_ORACLE_final_COMPLETE, 'xxxx-xx-xx imp_data_ORACLE_final_COMPLETE.csv', row.names = FALSE)
+```
+
+
+```{r, eval = FALSE}
+# Write and save as CSV file
+# Use today's date in the file name, eg. 2025-06-27 for June 27th 2025
+write.csv(imp_data_ORACLE_final_sysREMOVED, 'xxxx-xx-xx imp_data_ORACLE_final_sysREMOVED.csv', row.names = FALSE)
+```
+
+
+```{r, eval = FALSE}
+# Read CSV file
+imp_data_ORACLE_final_COMPLETE <- read.csv('xxxx-xx-xx imp_data_ORACLE_final_COMPLETE.csv')
+```
+
+
+```{r, eval = FALSE}
+# Read CSV file
+imp_data_ORACLE_final_sysREMOVED <- read.csv('xxxx-xx-xx imp_data_ORACLE_final_COMPLETE.csv')
+```
+
+
+
+

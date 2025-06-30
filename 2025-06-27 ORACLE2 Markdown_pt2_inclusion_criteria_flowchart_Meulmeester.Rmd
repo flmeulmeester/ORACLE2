@@ -1,0 +1,224 @@
+---
+title: "2025-06-2027 ORACLE Markdown_pt2_inclusion_criteria_flowchart"
+author: "FL Meulmeester"
+date: "2025-06-27"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+<style>
+body {
+text-align: justify}
+</style>
+
+<style type="text/css">
+  body{
+  font-size: 12pt;
+}
+</style>
+
+<style type="text/css">
+.main-container {
+  max-width: 1600px;
+  margin-left: auto;
+  margin-right: auto;
+}
+</style>
+
+
+# Loading the libraries
+ 
+```{r Packages, eval = FALSE, results = 'hide'}
+
+# Set CRAN mirror
+r <- getOption("repos")
+r["CRAN"] <- "http://cran.us.r-project.org"
+options(repos = r)
+
+# Vector of required packages
+Packages <- c(
+  "readstata13", "readxl", "dplyr", "tidyverse", "data.table", "ggplot2", "car",
+  "epiDisplay", "lubridate", "table1", "mice", "VIM", "caret", "lsr", "tidymodels",
+  "sjPlot", "stargazer", "Gmisc", "purrr", "corrplot", "ggcorrplot", "Hmisc",
+  "naniar", "lme4", "MASS", "broom", "nnet", "pROC", "rms", "gridExtra",
+  "survival", "ggsurvfit", "survminer", "fmsb", "DescTools"
+)
+
+# Install any missing packages
+installed <- Packages %in% rownames(installed.packages())
+if (any(!installed)) {
+  install.packages(Packages[!installed])
+}
+
+# Load all packages
+# Use invisible() to keep your console output clean
+invisible(lapply(Packages, library, character.only = TRUE))
+
+```
+
+
+# Data import
+
+```{r, eval = FALSE}
+# This R code uses the data cleaned in 2025-06-27 ORACLE Markdown_pt1_Data_Cleaning
+# Read as data_ORACLE
+
+data_ORACLE <- read.csv("C:/Users/YourName/Documents/xxxx-xx-xx data_ORACLE_CLEANED.csv")
+
+```
+
+
+# Inclusion criteria ORACLE2
+
+```{r, eval = FALSE}
+# We received not only the placebo and control arms, but also the treatment arms from some studies
+# Filter the data to include only the placebo arms for the analyses
+
+data_arm <- data_ORACLE %>% 
+  subset(Treatment_arm %in% 
+           c("FF/UMEC/VI 100/31.25/25",
+             "FF/UMEC/VI 100/62.5/25", 
+             "FF/VI 100/25", 
+             "Placebo", 
+             "Montelukast", 
+             "PLACEBO", 
+             "PBO", 
+             "Salbutamol_PRN", 
+             "BUD400_Terbutaline_PRN", 
+             "Placebo_1.14mL", 
+             "Placebo_2mL"))
+
+nrow(filter(data_arm)) # Interim number of participants in dataset
+```
+
+
+```{r, eval = FALSE}
+# One of the inclusion criteria was: no missing values in treatment arm
+# Check for missing values in Treatment_arm and remove them
+
+sum(is.na(data_arm$Treatment_arm))
+data_arm <- data_arm %>% drop_na(Treatment_arm)
+nrow(filter(data_arm)) # Interim number of participants after removing missing values
+```
+
+
+```{r, eval = FALSE}
+# One of the inclusion criteria was: aged 12 or over
+# Include only participants of 12 years and older
+
+sum(data_arm$Age_con <= 11, na.rm= TRUE) # Number of participants 11 years old or younger
+data_arm_age12 <- data_arm[is.na(data_arm$Age_con) | data_arm$Age_con > 11,]
+min(data_arm_age12$Age_con, na.rm= TRUE) # Check if 12 years is now the minimum age
+nrow(filter(data_arm_age12)) # Interim number of participants aged 12 or older
+```
+
+
+```{r, eval = FALSE}
+# One of the inclusion criteria was: no missing values in follow-up duration
+# Include only participants with a follow-up of >= 1 day
+
+sum(is.na(data_arm_age12$Follow_up_duration_days)) # Missing values in Follow up duration
+sum(data_arm_age12$Follow_up_duration_days == 0, na.rm=TRUE) # Participants with follow-up duration of 0 days
+data_arm_age12 <- subset(data_arm_age12, !is.na(Follow_up_duration_days) & Follow_up_duration_days != 0)
+nrow(filter(data_arm_age12)) # Interim number of participants with follow-up >= 1 day
+```
+
+
+```{r, eval = FALSE}
+# One of the inclusion criteria was: no missing values in treatment step
+# Include only participants with non-missing treatment step
+
+sum(is.na(data_arm_age12$Treatment_step)) # Missing values in Treatment step
+data_arm_age12 <- subset(data_arm_age12, !is.na(Treatment_step))
+nrow(filter(data_arm_age12)) # Total number of participants in final dataset
+```
+
+
+```{r, eval = FALSE}
+# Save the dataset to your network location for later use
+# Fill in the date at xxxx-xx-xx eg 2025-06-27 for 27th June 2025
+write.csv(data_arm_age12, file = "xxxx-xx-xx data_ORACLE_INCLUDED.csv", row.names = FALSE) 
+```
+
+
+# Flowchart
+
+```{r, eval = FALSE}
+# This is an example of how to create a flowchart in R; it is not the flowchart presented in the 2025 TLRM publication
+
+## Extended version of the flowchart
+
+# Load the grid package for creating graphical objects
+grid.newpage()
+
+# Define graphical boxes for each step in the flowchart
+# The numbers were calculated in "#Inclusion criteria"
+flowchart_1 <- boxGrob("Total number of patients\nn=6620",
+                         x=0.4, y=0.90)
+flowchart_2 <- boxGrob("Age >= 12 years old\nn=6539",
+                       x=0.4, y=0.70)
+flowchart_3 <- boxGrob("Excluded (n=81):\n Age < 12 (n=81)",
+                       x=0.6, y=0.80)
+flowchart_4 <- boxGrob("Follow-up duration > 0\nn=6516",
+                       x=0.4, y=0.50)
+flowchart_5 <- boxGrob("Excluded (n=20):\n Follow-up duration = 0 (n=23)",
+                       x=0.6, y=0.60)
+flowchart_6 <- boxGrob("Treatment step non-missing\nn=6513",
+                       x=0.4, y=0.30)
+flowchart_7 <- boxGrob("Excluded (n=3):\n Treatment step = NA (n=3)",
+                       x=0.6, y=0.40)
+
+# Connect the graphical boxes with arrows
+connectGrob(flowchart_1, flowchart_2, "vertical")  # Connect step 1 to step 2
+connectGrob(flowchart_1, flowchart_3, "-")         # Connect step 1 to exclusion 1
+connectGrob(flowchart_2, flowchart_4, "vertical")  # Connect step 2 to step 4
+connectGrob(flowchart_2, flowchart_5, "-")         # Connect step 2 to exclusion 2
+connectGrob(flowchart_4, flowchart_6, "vertical")  # Connect step 4 to step 6
+connectGrob(flowchart_4, flowchart_7, "-")         # Connect step 4 to exclusion 3
+
+# Display the graphical boxes
+flowchart_1
+flowchart_2
+flowchart_3
+flowchart_4
+flowchart_5
+flowchart_6
+flowchart_7
+```
+
+```{r, eval = FALSE}
+## Short version of the flowchart
+
+# Load the grid package for creating graphical objects
+grid.newpage()
+
+# Define graphical boxes for each step in the flowchart
+# The numbers were calculated in "#Inclusion criteria"
+flowchart_8 <- boxGrob("Total number of patients\nn=6539",
+                       x=0.4, y=0.90)
+flowchart_9 <- boxGrob("Follow-up duration > 0\nn=6519",
+                       x=0.4, y=0.70)
+flowchart_10 <- boxGrob("Excluded (n=20):\n Follow-up duration = 0 (n=23)",
+                       x=0.7, y=0.80)
+flowchart_11 <- boxGrob("Treatment step non-missing\nn=6513",
+                       x=0.4, y=0.50)
+flowchart_12 <- boxGrob("Excluded (n=3):\n Treatment step = NA (n=3)",
+                       x=0.7, y=0.60)
+
+# Connect the graphical boxes with arrows
+connectGrob(flowchart_8, flowchart_9, "vertical")  # Connect step 8 to step 9
+connectGrob(flowchart_8, flowchart_10, "-")        # Connect step 8 to exclusion 10
+connectGrob(flowchart_9, flowchart_11, "vertical") # Connect step 9 to step 11
+connectGrob(flowchart_9, flowchart_12, "-")        # Connect step 9 to exclusion 12
+
+# Display the graphical boxes
+flowchart_8
+flowchart_9
+flowchart_10
+flowchart_11
+flowchart_12
+```
+

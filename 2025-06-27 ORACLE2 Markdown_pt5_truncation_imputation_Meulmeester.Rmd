@@ -1,0 +1,973 @@
+---
+title: "2025-06-27 ORACLE Markdown_pt5_truncation_imputation"
+author: "FL Meulmeester"
+date: "2025-06-27"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+<style>
+body {
+text-align: justify}
+</style>
+
+<style type="text/css">
+  body{
+  font-size: 12pt;
+}
+</style>
+
+<style type="text/css">
+.main-container {
+  max-width: 1600px;
+  margin-left: auto;
+  margin-right: auto;
+}
+</style>
+
+
+# Loading the libraries
+ 
+```{r Packages, eval = FALSE, results = 'hide'}
+
+# Set CRAN mirror
+r <- getOption("repos")
+r["CRAN"] <- "http://cran.us.r-project.org"
+options(repos = r)
+
+# Vector of required packages
+Packages <- c(
+  "readstata13", "readxl", "dplyr", "tidyverse", "data.table", "ggplot2", "car",
+  "epiDisplay", "lubridate", "table1", "mice", "VIM", "caret", "lsr", "tidymodels",
+  "sjPlot", "stargazer", "Gmisc", "purrr", "corrplot", "ggcorrplot", "Hmisc",
+  "naniar", "lme4", "MASS", "broom", "nnet", "pROC", "rms", "gridExtra",
+  "survival", "ggsurvfit", "survminer", "fmsb", "DescTools"
+)
+
+# Install any missing packages
+installed <- Packages %in% rownames(installed.packages())
+if (any(!installed)) {
+  install.packages(Packages[!installed])
+}
+
+# Load all packages
+# Use invisible() to keep your console output clean
+invisible(lapply(Packages, library, character.only = TRUE))
+```
+
+
+# Data import
+
+```{r, eval = FALSE}
+# This R code uses the data cleaned and using the inclusion criteria in 2025-06-2027 ORACLE Markdown_pt2_inclusion_criteria_flowchart
+# Read as data_arm_age12
+
+data_arm_age12 <- read.csv("C:/Users/YourName/Documents/xxxx-xx-xx data_ORACLE_INCLUDED.csv")
+
+```
+
+
+# Truncation to 99th percentile
+
+```{r, eval = FALSE}
+# We truncated the values of all numerical variables with continuous values to the 99th percentile
+
+# Check all variables and their column number
+# Create a tibble (data frame) with the column numbers and their corresponding variable names
+tibble <- tibble(
+  ColumnNumber = seq_along(data_arm_age12), # Sequence along the number of columns
+  VariableName = names(data_arm_age12) # Names of the columns
+  ) %>% 
+  print(n = 100) # Print the tibble
+```
+
+
+```{r, eval = FALSE}
+# Specify the column numbers you want to truncate
+columns_to_truncate <- c(22,24,44,46,48,50,58,62:87,94:97)
+
+# Or specify using variable names
+columns_to_truncate <- c(
+  "Number_severe_attack_previous_12m_con",
+  "Number_hospitalisations_for_asthma_previous_12_months_con",
+  "Adherence_PreTrial_quantity",
+  "Adherence_InTrial_quantity",
+  "SABA_actuations_per_day_average_PreTrial",
+  "SABA_actuations_per_day_average_InTrial",
+  "Mainteance_OCS_dose",
+  "FEV1_predicted_L",
+  "FVC_predicted_L",
+  "FEV1_preBD_L_Baseline",
+  "FEV1_preBD_PCT_Baseline",
+  "FVC_preBD_L_Baseline",
+  "FVC_preBD_PCT_Baseline",
+  "FEV1_postBD_L_Baseline",
+  "FEV1_postBD_PCT_Baseline",
+  "FVC_postBD_PCT_Baseline",
+  "FEV1_PCT_reversibility_postBD",
+  "ACQ_baseline_score_mean",
+  "ACQ_baseline_score_item1_sleepawakenings",
+  "ACQ_baseline_score_item2_morningsymptoms",
+  "ACQ_baseline_score_item3_activitylimitation",
+  "ACQ_baseline_score_item4_dyspnea",
+  "ACQ_baseline_score_item5_wheezing",
+  "ACQ_baseline_score_item6_RelieverUse",
+  "ACQ_baseline_score_item7_FEV1",
+  "FVC_postBD_L_Baseline",
+  "ACT_baseline_score",
+  "Blood_Eos_baseline_x10_9_cells_per_L",
+  "FEV1PREBD_L_52W",
+  "FEV1PREBD_PCT_52W",
+  "FEV1POSTBD_L_52W",
+  "FEV1POSTBD_PCT_52W",
+  "Blood_Eos_baseline_x10_9_cells_per_L_zeroreplaced",
+  "FeNO_baseline_ppb",
+  "Total_IgE",
+  "Follow_up_duration_days",
+  "Number_severe_asthma_attacks_during_followup"
+)
+```
+
+
+```{r, eval = FALSE}
+# Truncate the specified columns with 0.05% as the lower bound and 99.5% as the upper bound
+## This code is used only in R version 4.3.1
+
+# Create a separate dataset for truncation
+data_to_truncate <- data_arm_age12
+
+cutoff <- function(data_to_truncate, var){
+  # Apply Winsorization to the specified column
+  data_to_truncate[,var] <- 
+    Winsorize(data_to_truncate[,var],
+          minval = quantile(data_to_truncate[,var], probs = 0.005, na.rm = TRUE), # 0.5% quantile as lower bound
+          maxval = quantile(data_to_truncate[,var], probs = 0.995, na.rm = TRUE)) # 99.5% quantile as upper bound
+}
+
+# Loop through each column specified for truncation and apply the cutoff function
+for (col in columns_to_truncate){
+  data_to_truncate[,col] <- cutoff(data_to_truncate,var=col)
+}
+```
+
+
+```{r, eval = FALSE}
+# Truncate the specified columns with 0.05% as the lower bound and 99.5% as the upper bound
+## This code is used in R version 4.4.1 and newer
+
+# Create a separate dataset for truncation
+data_to_truncate <- data_arm_age12
+
+# Define a custom Winsorization function
+cutoff <- function(data, var){
+  # Calculate the 0.5% and 99.5% quantiles
+  lower_bound <- quantile(data[[var]], probs = 0.005, na.rm = TRUE)
+  upper_bound <- quantile(data[[var]], probs = 0.995, na.rm = TRUE)
+  
+  # Winsorize the data manually by replacing values outside the bounds
+  data[[var]] <- pmax(pmin(data[[var]], upper_bound), lower_bound)
+  
+  return(data[[var]])  # Return the modified column
+}
+
+# Loop through each column specified for truncation and apply the cutoff function
+for (col in columns_to_truncate){
+  data_to_truncate[[col]] <- cutoff(data_to_truncate, var = col)
+}
+
+# Check the result
+head(data_to_truncate)
+```
+
+
+```{r, eval = FALSE}
+# Summarize specific variables before and after truncation
+
+# Print summaries of the original dataset's variables
+summary(data_arm_age12$Number_severe_attack_previous_12m_con)
+summary(data_arm_age12$FEV1_preBD_PCT_Baseline)
+summary(data_arm_age12$FeNO_baseline_ppb)
+
+# Print summaries of the truncated dataset's variables to check if truncation worked
+summary(data_to_truncate$Number_severe_attack_previous_12m_con) 
+summary(data_to_truncate$FEV1_preBD_PCT_Baseline)
+summary(data_to_truncate$FeNO_baseline_ppb)
+```
+
+
+```{r, eval = FALSE}
+# Rename the truncated dataset to the original dataset name
+data_arm_age12 <- data_to_truncate
+```
+
+
+# Single imputation with post-processing: Age
+
+```{r, eval = FALSE}
+# As described in "pt1: Data cleaning", we received the variable Age as continuous and categorical variable depending on study
+# This R code imputes values for Age continuous (Age_con), while restricting to the information provided by Age categorical (Age_cat), using the R package mice
+
+## Add indicator variable for missing values in Age_con
+data_arm_age12 <- data_arm_age12 %>%
+  mutate(Age_con_0NA_1_2 =
+           case_when(
+             !is.na(Age_con) ~ 1,           
+             is.na(Age_con) & is.na(Age_cat) ~ 2,
+             is.na(Age_con) & !is.na(Age_cat) ~ 0
+           ), .after = Age_con)
+
+data_age_con <- data.frame(Sequential_number = data_arm_age12$Sequential_number, 
+                           Age_con_0NA_1_2 = data_arm_age12$Age_con_0NA_1_2, 
+                           Age_cat = data_arm_age12$Age_cat, 
+                           Age_min = data_arm_age12$Age_min, 
+                           Age_max = data_arm_age12$Age_max)
+
+```
+
+
+```{r, eval = FALSE}
+# Check all variables and their column number
+
+tibble(
+  ColumnNumber = seq_along(data_arm_age12),
+  VariableName = names(data_arm_age12)
+  ) %>% print(n = 100)
+```
+
+
+```{r, eval = FALSE}
+# Impute with mice but only keep the imputed values where we have no information on Age_cat (=NA)
+
+set.seed(123) # set a seed to initialize the sequence of random numbers generated
+data_imp_age_con <- data_arm_age12[,c(1,7,11,14,21,29,40,42,43,50,56:58,60:62,66,74,84:88)] # variables for the imputation model 
+
+factors <- c(3,5:16)
+data_imp_age_con <- data_imp_age_con %>% mutate(across(all_of(factors), as.factor)) # change data type to factor for factor variables
+
+data_imp_age_con$BMI_con <- as.numeric(data_imp_age_con$BMI_con) # make sure BMI_con and Age_con are numeric variables before imputation
+data_imp_age_con$Age_con <- as.numeric(data_imp_age_con$Age_con)
+
+predM <- make.predictorMatrix(data_imp_age_con) # create predictor matrix 
+predM["Sequential_number", ] <- 0 # set predictor matrix for sequential number to 0
+predM[, "Sequential_number"] <- 0
+
+imp_age_con <- mice(data_imp_age_con, m = 10, seed = 123, predictorMatrix = predM) # imputation model with 10 imputations and default of 5 iterations
+imp_age_con$loggedEvents # check number of logged events
+```
+
+
+```{r, eval = FALSE}
+# Check imputed values versus original values
+densityplot(imp_age_con)
+```
+
+
+```{r, eval = FALSE}
+# Choose one imputed data set and merge with data set we created previosuly containing Age_cat and the indicator variable
+completed_imp_age_con <- mice::complete(imp_age_con, 10) # imputed data set 10
+completed_imp_age_con <- merge(completed_imp_age_con, data_age_con, by = "Sequential_number")
+
+# If Age_cat is available, put Age_con back to NA
+completed_imp_age_con <- completed_imp_age_con %>%
+  mutate(Age_con =
+           case_when(
+             Age_con_0NA_1_2 == 0 ~ NA,
+             Age_con_0NA_1_2 == 1 ~ Age_con,
+             Age_con_0NA_1_2 == 2 ~ Age_con
+           ))
+```
+
+
+```{r, eval = FALSE}
+# Replace missing values in Age_cat using newly imputed Age_con
+
+completed_imp_age_con <- completed_imp_age_con %>%
+  mutate(Age_cat = case_when(
+    is.na(Age_cat) & Age_con >= 0 & Age_con <= 10 ~ "0 < x <= 10",
+    is.na(Age_cat) & Age_con > 10 & Age_con <= 15 ~ "10 < x <= 15",
+    is.na(Age_cat) & Age_con > 15 & Age_con <= 20 ~ "15 < x <= 20",
+    is.na(Age_cat) & Age_con > 20 & Age_con <= 25 ~ "20 < x <= 25",
+    is.na(Age_cat) & Age_con > 25 & Age_con <= 30 ~ "25 < x <= 30",
+    is.na(Age_cat) & Age_con > 30 & Age_con <= 35 ~ "30 < x <= 35",
+    is.na(Age_cat) & Age_con > 35 & Age_con <= 40 ~ "35 < x <= 40",
+    is.na(Age_cat) & Age_con > 40 & Age_con <= 45 ~ "40 < x <= 45",
+    is.na(Age_cat) & Age_con > 45 & Age_con <= 50 ~ "45 < x <= 50",
+    is.na(Age_cat) & Age_con > 50 & Age_con <= 55 ~ "50 < x <= 55",
+    is.na(Age_cat) & Age_con > 55 & Age_con <= 60 ~ "55 < x <= 60",
+    is.na(Age_cat) & Age_con > 60 & Age_con <= 65 ~ "60 < x <= 65",
+    is.na(Age_cat) & Age_con > 65 & Age_con <= 70 ~ "65 < x <= 70",
+    is.na(Age_cat) & Age_con > 70 & Age_con <= 75 ~ "70 < x <= 75",
+    is.na(Age_cat) & Age_con > 75 & Age_con <= 80 ~ "75 < x <= 80",
+    is.na(Age_cat) & Age_con > 80 & Age_con <= 85 ~ "80 < x <= 85",
+    is.na(Age_cat) & Age_con > 85 & Age_con <= 90 ~ "85 < x <= 90",
+    TRUE ~ as.character(Age_cat)
+  ))
+
+```
+
+
+```{r, eval = FALSE}
+# Include Minimum value for check later
+
+completed_imp_age_con <- completed_imp_age_con %>%
+  mutate(Age_min =
+           case_when(Age_cat == "12 <= x <= 33" ~ 12,
+                     Age_cat == "12 <= x <= 42" ~ 12,
+                     Age_cat == "18 <= x <= 38" ~ 18,
+                     Age_cat == "18 <= x <= 41" ~ 18,
+                     Age_cat == "33 < x <= 47" ~ 33.1,
+                     Age_cat == "38 < x <= 48" ~ 38.1,
+                     Age_cat == "41 < x <= 50" ~ 41.1,
+                     Age_cat == "42 < x <= 51" ~ 42.1,
+                     Age_cat == "47 < x <= 58" ~ 47.1,
+                     Age_cat == "48 < x <= 58" ~ 48.1,
+                     Age_cat == "50 < x <= 58" ~ 50.1,
+                     Age_cat == "51 < x <= 59" ~ 51.1,
+                     Age_cat == "58 < x <= 80" ~ 58.1,
+                     Age_cat == "58 < x <= 84" ~ 58.1,
+                     Age_cat == "58 < x <= 87" ~ 58.1,
+                     Age_cat == "59 < x <= 82" ~ 59.1,
+                     Age_cat == "0 < x <= 25" ~ 12,
+                     Age_cat == "0 < x <= 10" ~ 0,
+                     Age_cat == "10 < x <= 20" ~ 12,
+                     Age_cat == "10 < x <= 15" ~ 12,
+                     Age_cat == "15 < x <= 20" ~ 15.1,
+                     Age_cat == "20 < x <= 25" ~ 20.1,
+                     Age_cat == "20 < x <= 40" ~ 20.1,
+                     Age_cat == "25 < x <= 30" ~ 25.1,
+                     Age_cat == "25 < x <= 50" ~ 25.1,
+                     Age_cat == "30 < x <= 35" ~ 30.1,
+                     Age_cat == "35 < x <= 40" ~ 35.1,
+                     Age_cat == "40 < x <= 45" ~ 40.1,
+                     Age_cat == "45 < x <= 50" ~ 45.1,
+                     Age_cat == "50 < x <= 55" ~ 50.1,
+                     Age_cat == "50 < x <= 75" ~ 50.1,
+                     Age_cat == "55 < x <= 60" ~ 55.1,
+                     Age_cat == "60 < x <= 65" ~ 60.1,
+                     Age_cat == "60 < x <= 80" ~ 60.1,
+                     Age_cat == "65 < x <= 70" ~ 65.1,
+                     Age_cat == "70 < x <= 75" ~ 70.1,
+                     Age_cat == "20 < x <= 30" ~ 20.1,
+                     Age_cat == "30 < x <= 40" ~ 30.1,
+                     Age_cat == "40 < x <= 50" ~ 40.1,
+                     Age_cat == "50 < x <= 60" ~ 50.1,
+                     Age_cat == "60 < x <= 70" ~ 60.1,
+                     Age_cat == "70 < x <= 80" ~ 70.1,
+                     Age_cat == "75 < x <= 80" ~ 75.1,
+                     Age_cat == "80 < x <= 85" ~ 80.1,
+                     Age_cat == "85 < x <= 90" ~ 85.1,))
+```
+
+
+```{r, eval = FALSE}
+# Include Maximum value for check later
+
+completed_imp_age_con <- completed_imp_age_con %>%
+  mutate(Age_max =
+           case_when(Age_cat == "12 <= x <= 33" ~ 33,
+                     Age_cat == "12 <= x <= 42" ~ 42,
+                     Age_cat == "18 <= x <= 38" ~ 38,
+                     Age_cat == "18 <= x <= 41" ~ 41,
+                     Age_cat == "33 < x <= 47" ~ 47,
+                     Age_cat == "38 < x <= 48" ~ 48,
+                     Age_cat == "41 < x <= 50" ~ 50,
+                     Age_cat == "42 < x <= 51" ~ 51,
+                     Age_cat == "47 < x <= 58" ~ 58,
+                     Age_cat == "48 < x <= 58" ~ 58,
+                     Age_cat == "50 < x <= 58" ~ 58,
+                     Age_cat == "51 < x <= 59" ~ 59,
+                     Age_cat == "58 < x <= 80" ~ 80,
+                     Age_cat == "58 < x <= 84" ~ 84,
+                     Age_cat == "58 < x <= 87" ~ 87,
+                     Age_cat == "59 < x <= 82" ~ 82,
+                     Age_cat == "0 < x <= 25" ~ 25,
+                     Age_cat == "0 < x <= 10" ~ 10,
+                     Age_cat == "10 < x <= 20" ~ 20,
+                     Age_cat == "10 < x <= 15" ~ 15,
+                     Age_cat == "15 < x <= 20" ~ 20,
+                     Age_cat == "20 < x <= 25" ~ 25,
+                     Age_cat == "20 < x <= 40" ~ 40,
+                     Age_cat == "25 < x <= 30" ~ 30,
+                     Age_cat == "25 < x <= 50" ~ 50,
+                     Age_cat == "30 < x <= 35" ~ 35,
+                     Age_cat == "35 < x <= 40" ~ 40,
+                     Age_cat == "40 < x <= 45" ~ 45,
+                     Age_cat == "45 < x <= 50" ~ 50,
+                     Age_cat == "50 < x <= 55" ~ 55,
+                     Age_cat == "50 < x <= 75" ~ 75,
+                     Age_cat == "55 < x <= 60" ~ 60,
+                     Age_cat == "60 < x <= 65" ~ 65,
+                     Age_cat == "60 < x <= 80" ~ 80,
+                     Age_cat == "65 < x <= 70" ~ 70,
+                     Age_cat == "70 < x <= 75" ~ 75,
+                     Age_cat == "20 < x <= 30" ~ 30,
+                     Age_cat == "30 < x <= 40" ~ 40,
+                     Age_cat == "40 < x <= 50" ~ 50,
+                     Age_cat == "50 < x <= 60" ~ 60,
+                     Age_cat == "60 < x <= 70" ~ 70,
+                     Age_cat == "70 < x <= 80" ~ 80,
+                     Age_cat == "75 < x <= 80" ~ 80,
+                     Age_cat == "80 < x <= 85" ~ 85,
+                     Age_cat == "85 < x <= 90" ~ 90,))
+
+```
+
+```{r, eval = FALSE}
+# Take out the Age variables from completed_imp_age_con, because these should not be imputed
+
+data_imp_age2 <- data.frame(Sequential_number = completed_imp_age_con$Sequential_number, 
+                            Age_con = completed_imp_age_con$Age_con, 
+                            Age_cat = completed_imp_age_con$Age_cat, 
+                            Age_min = completed_imp_age_con$Age_min, 
+                            Age_max = completed_imp_age_con$Age_max, 
+                            Age_con_0NA_1_2 = completed_imp_age_con$Age_con_0NA_1_2)
+
+```
+
+
+```{r, eval = FALSE}
+# Now impute Age_con using the restrictions of the completed variable Age_cat
+
+set.seed(123) # set the same seed
+
+data_imp_age <- data_arm_age12[, c(1,11,14,21,29,40,42,43,50,56:58,60:62,66,74,84:88)] # do not include Age_con
+data_imp_age2 <- merge(data_imp_age2, data_imp_age, by = "Sequential_number")
+
+factors <- c(7,9:20)
+data_imp_age2 <- data_imp_age2 %>% mutate(across(all_of(factors), as.factor))
+
+data_imp_age2$Age_cat <- as.character(data_imp_age2$Age_cat)
+
+predM <- make.predictorMatrix(data_imp_age2)
+predM[c("Sequential_number","Age_min","Age_max","Age_con_0NA_1_2"), ] <- 0 # define the predictor matrix with variables that should not be used as a predictor for the target variable in the imputation model
+predM[, c("Sequential_number","Age_min","Age_max","Age_con_0NA_1_2")] <- 0
+
+```
+
+
+```{r, eval = FALSE}
+# Use post-processing to squeeze Age_con within the boundaries that we know by Age_cat
+
+post <- make.post(data_imp_age2)
+
+post_first = "imp[[j]][data_imp_age2$Age_cat[!r[, j]] == '"; post_second = "', i] <- squeeze(imp[[j]][data_imp_age2$Age_cat[!r[, j]] == '"
+post_third = "', i], c("; post_fourth = "))"
+
+intervals <- unique(data_imp_age2$Age_cat)
+len_intervals = length(intervals)
+int_mat <- matrix(nrow = len_intervals, ncol = 2)
+for (i in 1:len_intervals) {
+  bounds <- unlist(strsplit(intervals[i], " <= | < "))
+  lower <- as.numeric(gsub("x", "", bounds[1]))
+  upper <- as.numeric(gsub("x", "", bounds[3]))
+  int_mat[i, ] <- c(lower, upper)
+  
+  if (grepl("< x", intervals[i])) {
+    lower <- lower + 1
+  }
+  
+  int_mat[i, ] <- c(lower, upper)
+}
+
+test = NULL
+for(i in 1:len_intervals){
+  test = paste(test, paste(post_first, intervals[i], post_second, intervals[i], post_third, paste(int_mat[i, ], collapse = ", "), post_fourth, "\n", sep = ""), sep = "")
+}
+post["Age_con"] = test
+
+```
+
+
+```{r, eval = FALSE}
+# Use mice to perform multiple imputation
+
+imp_age2 <- mice(data_imp_age2, m = 10, post = post, seed = 123, predictorMatrix = predM)
+imp_age2$loggedEvents
+```
+
+
+```{r, eval = FALSE}
+# Check imputed values versus original values
+densityplot(imp_age2)
+```
+
+
+```{r, eval = FALSE}
+# Choose one imputed data set
+completed_imp_age2 <- mice::complete(imp_age2, 10)
+
+# Check if the squeezing worked using minimum and maximum
+completed_imp_age2$Check_Agemin = completed_imp_age2$Age_con >= completed_imp_age2$Age_min
+completed_imp_age2$Check_Agemax = completed_imp_age2$Age_con <= completed_imp_age2$Age_max
+nrow(filter(completed_imp_age2, Check_Agemin == FALSE)) # should be 0
+nrow(filter(completed_imp_age2, Check_Agemax == FALSE)) # should be 0
+```
+
+
+```{r, eval = FALSE}
+sum(is.na(completed_imp_age2$Age_con)) # must be 0 
+
+# Now data frame completed_imp_age2 has the imputed Age_con with 0 missing values
+```
+
+
+# Single imputation with post-processing: BMI
+
+```{r, eval = FALSE}
+# As described in "pt1: Data cleaning", we received the variable BMI as continuous and categorical variable depending on study
+# This R code imputes values for BMI continuous (BMI_con), while restricting to the information provided by BMI categorical (BMI_cat), using the R package mice
+
+## Add indicator variable for missing values in BMI_con
+data_arm_age12 <- data_arm_age12 %>%
+  mutate(BMI_con_0NA_1_2 =
+           case_when(
+             !is.na(BMI_con) ~ 1,           
+             is.na(BMI_con) & is.na(BMI_cat) ~ 2,
+             is.na(BMI_con) & !is.na(BMI_cat) ~ 0
+           ), .after = BMI_con)
+
+data_bmi_con <- data.frame(Sequential_number = data_arm_age12$Sequential_number, 
+                           BMI_con_0NA_1_2 = data_arm_age12$BMI_con_0NA_1_2, 
+                           BMI_cat = data_arm_age12$BMI_cat, 
+                           BMI_min = data_arm_age12$BMI_min, 
+                           BMI_max = data_arm_age12$BMI_max)
+
+```
+
+
+```{r, eval = FALSE}
+# Check all variables and their column number
+
+tibble(
+  ColumnNumber = seq_along(data_arm_age12),
+  VariableName = names(data_arm_age12)
+  ) %>% print(n= 100)
+```
+
+
+```{r, eval = FALSE}
+# Impute with mice but only keep the imputed values where BMI_cat = NA
+
+set.seed(123)
+
+data_imp_bmi_con <- data_arm_age12[, c(1,7,11,14,22,30,41,43,44,51,57:59,61:63,67,75,85:89)] # variables to be imputed 
+
+factors <- c(3,5:16)
+data_imp_bmi_con <- data_imp_bmi_con %>% mutate(across(all_of(factors), as.factor))
+
+predM <- make.predictorMatrix(data_imp_bmi_con) # create predictor matrix for mice model
+predM["Sequential_number", ] <- 0 
+predM[, "Sequential_number"] <- 0
+
+imp_bmi_con <- mice(data_imp_bmi_con, m = 10, seed = 123, predictorMatrix = predM)
+imp_bmi_con$loggedEvents # check logged events
+```
+
+
+```{r, eval = FALSE}
+# Check imputed values versus original values
+densityplot(imp_bmi_con)
+```
+
+
+```{r, eval = FALSE}
+# Choose one imputed data set and merge with data set containing BMI_cat and the indicator variable
+completed_imp_bmi_con <- mice::complete(imp_bmi_con, 10)
+sum(is.na(completed_imp_bmi_con$BMI_con)) # must be 0
+
+completed_imp_bmi_con <- merge(completed_imp_bmi_con, data_bmi_con, by = "Sequential_number")
+
+# If BMI_cat is available, put BMI_con back to NA
+completed_imp_bmi_con <- completed_imp_bmi_con %>%
+  mutate(BMI_con =
+           case_when(
+             BMI_con_0NA_1_2 == 0 ~ NA,
+             BMI_con_0NA_1_2 == 1 ~ BMI_con,
+             BMI_con_0NA_1_2 == 2 ~ BMI_con
+           ))
+```
+
+
+```{r, eval = FALSE}
+# Replace missing values in BMI_cat using newly imputed BMI_con
+completed_imp_bmi_con <- completed_imp_bmi_con %>%
+  mutate(BMI_cat = case_when(
+        is.na(BMI_cat) & BMI_con <= 19 ~ "0 < x <= 19",
+        is.na(BMI_cat) & BMI_con > 19 & BMI_con <= 25 ~ "19 < x <= 25",
+        is.na(BMI_cat) & BMI_con > 25 & BMI_con <= 30 ~ "25 < x <= 30",
+        is.na(BMI_cat) & BMI_con > 30 & BMI_con <= 35 ~ "30 < x <= 35",
+        is.na(BMI_cat) & BMI_con > 35 & BMI_con <= 40 ~ "35 < x <= 40",
+        is.na(BMI_cat) & BMI_con > 40  ~ "40 < x",
+        TRUE ~ as.character(BMI_cat)
+      ))
+```
+
+
+```{r, eval = FALSE}
+# Include Minimum for check later
+completed_imp_bmi_con <- completed_imp_bmi_con %>%
+  mutate(BMI_min =
+           case_when(BMI_cat == "0 < x <= 19" ~ 0.001,
+                     BMI_cat == "19 < x <= 25" ~ 19.001,
+                     BMI_cat == "25 < x <= 30" ~ 25.001,
+                     BMI_cat == "30 < x <= 80" ~ 30.001,
+                     BMI_cat == "30 < x <= 35" ~ 30.001,
+                     BMI_cat == "35 < x <= 40" ~ 35.001,
+                     BMI_cat == "40 < x" ~ 40.001))
+
+```
+
+
+```{r, eval = FALSE}
+# Include Maximum for check later 
+completed_imp_bmi_con <- completed_imp_bmi_con %>%
+  mutate(BMI_max =
+           case_when(BMI_cat == "0 < x <= 19" ~ 19,
+                     BMI_cat == "19 < x <= 25" ~ 25,
+                     BMI_cat == "25 < x <= 30" ~ 30,
+                     BMI_cat == "30 < x <= 80" ~ 80,
+                     BMI_cat == "30 < x <= 35" ~ 35,
+                     BMI_cat == "35 < x <= 40" ~ 40,
+                     BMI_cat == "40 < x" ~ 80))
+```
+
+
+```{r, eval = FALSE}
+# Take out the BMI variables from completed_imp_bmi_con, because these should not be imputed anymore
+data_imp_bmi2 <- data.frame(Sequential_number = completed_imp_bmi_con$Sequential_number, 
+                            BMI_con = completed_imp_bmi_con$BMI_con, 
+                            BMI_cat = completed_imp_bmi_con$BMI_cat, 
+                            BMI_min = completed_imp_bmi_con$BMI_min, 
+                            BMI_max = completed_imp_bmi_con$BMI_max, 
+                            BMI_con_0NA_1_2 = completed_imp_bmi_con$BMI_con_0NA_1_2)
+
+```
+
+
+```{r, eval = FALSE}
+# Now impute BMI_con using the boundaries of the completed BMI_cat
+set.seed(123)
+
+data_imp_bmi <- data_arm_age12[, c(1,7,11,22,30,41,43,44,51,57:59,61:63,67,75,85:89)] # do not include BMI_con
+
+data_imp_bmi2 <- merge(data_imp_bmi2, data_imp_bmi, by = "Sequential_number")
+
+factors <- c(8:20)
+data_imp_bmi2 <- data_imp_bmi2 %>% mutate(across(all_of(factors), as.factor))
+
+predM <- make.predictorMatrix(data_imp_bmi2) # create predictor matrix
+predM[c("Sequential_number","BMI_min","BMI_max","BMI_cat","BMI_con_0NA_1_2"), ] <- 0 # add variables that should not be used as a predictor in the imputation model
+predM[, c("Sequential_number","BMI_min","BMI_max","BMI_cat","BMI_con_0NA_1_2")] <- 0
+```
+
+
+```{r, eval = FALSE}
+# Use post-processing to squeeze BMI_con within boundaries of BMI_cat
+post <- make.post(data_imp_bmi2)
+
+post_first = "imp[[j]][data_imp_bmi2$BMI_cat[!r[, j]] == '"; post_second = "', i] <- squeeze(imp[[j]][data_imp_bmi2$BMI_cat[!r[, j]] == '"
+post_third = "', i], c("; post_fourth = "))"
+
+intervals <- unique(data_imp_bmi2$BMI_cat)
+len_intervals = length(intervals)
+int_mat <- matrix(nrow = len_intervals, ncol = 2)
+for (i in 1:len_intervals) {
+  bounds <- unlist(strsplit(intervals[i], " <= | < "))
+  lower <- as.numeric(gsub("x", "", bounds[1]))
+  upper <- as.numeric(gsub("x", "", bounds[3]))
+  int_mat[i, ] <- c(lower, upper)
+  
+  if (grepl("< x", intervals[i])) {
+    lower <- lower + 0.001
+  }
+  
+  if (grepl("40 < x", intervals[i])) {
+    upper <- 80
+  }
+  
+  int_mat[i, ] <- c(lower, upper)
+}
+
+test = NULL
+for(i in 1:len_intervals){
+  test = paste(test, paste(post_first, intervals[i], post_second, intervals[i], post_third, paste(int_mat[i, ], collapse = ", "), post_fourth, "\n", sep = ""), sep = "")
+}
+post["BMI_con"] = test
+```
+
+
+```{r, eval = FALSE}
+# Use mice to perform multiple imputation
+imp_bmi2 <- mice(data_imp_bmi2, m = 10, post=post, seed = 123, predictorMatrix = predM)
+imp_bmi2$loggedEvents # check logged events
+```
+
+
+```{r, eval = FALSE}
+# Check imputed versus original values
+densityplot(imp_bmi2)
+```
+
+
+```{r, eval = FALSE}
+# Choose one imputed data set
+completed_imp_bmi2 <- mice::complete(imp_bmi2, 10)
+
+# Check if the squeezing worked using minimum and maximum
+completed_imp_bmi2$Check_BMImin = completed_imp_bmi2$BMI_con >= completed_imp_bmi2$BMI_min
+completed_imp_bmi2$Check_BMImax = completed_imp_bmi2$BMI_con <= completed_imp_bmi2$BMI_max
+nrow(filter(completed_imp_bmi2, Check_BMImin == FALSE)) # should be 0
+nrow(filter(completed_imp_bmi2, Check_BMImax == FALSE)) # should be 0
+```
+
+
+```{r, eval = FALSE}
+sum(is.na(completed_imp_bmi2$BMI_con)) # should be 0
+
+# Now data frame completed_imp_bmi2 has the imputed BMI_con with 0 missing values
+```
+
+
+# Single imputation with post-processing: Pack years
+
+```{r, eval = FALSE}
+# As described in "pt1: Data cleaning", we received the variable Pack years as continuous and categorical variable depending on study
+# This R code imputes values for Pack years continuous (Pack_years_con), while restricting to the information provided by Pack years categorical (Pack_years_cat), using the R package mice
+
+# Add indicator variable for NAs in Pack_years_con
+data_arm_age12 <- data_arm_age12 %>%
+  mutate(PackY_con_0NA_1_2 =
+           case_when(
+             !is.na(Pack_years_con) ~ 1,           
+             is.na(Pack_years_con) & is.na(Pack_years_cat) ~ 2,
+             is.na(Pack_years_con) & !is.na(Pack_years_cat) ~ 0
+           ), .after = Pack_years_con)
+
+data_packY_con <- data.frame(Sequential_number = data_arm_age12$Sequential_number, 
+                             PackY_con_0NA_1_2 = data_arm_age12$PackY_con_0NA_1_2, 
+                             Pack_years_cat = data_arm_age12$Pack_years_cat, 
+                             Pack_years_min = data_arm_age12$Pack_years_min, 
+                             Pack_years_max = data_arm_age12$Pack_years_max)
+
+```
+
+
+```{r, eval = FALSE}
+# Check all variables and their column number
+
+tibble(
+  ColumnNumber = seq_along(data_arm_age12),
+  VariableName = names(data_arm_age12)
+  ) %>% print(n= 110)
+```
+
+
+```{r, eval = FALSE}
+# Impute with mice but only keep values where Pack_years_cat = NA
+set.seed(123)
+
+data_imp_packy_con <- data_arm_age12[, c(1,7,11,14,22,30,32,42,44,45,52,58:60,62:64,68,76,86:90)] # variables to be imputed 
+
+factors <- c(3,5,6,8:17)
+data_imp_packy_con <- data_imp_packy_con %>% mutate(across(all_of(factors), as.factor))
+
+predM <- make.predictorMatrix(data_imp_packy_con) # create predictor matrix
+predM["Sequential_number", ] <- 0 
+predM[, "Sequential_number"] <- 0
+
+imp_packy_con <- mice(data_imp_packy_con, m = 10, seed = 123, predictorMatrix = predM)
+imp_packy_con$loggedEvents # check logged events
+```
+
+
+```{r, eval = FALSE}
+# Check imputed versus original values
+densityplot(imp_packy_con)
+```
+
+
+```{r, eval = FALSE}
+# Choose one imputed data set and merge
+completed_imp_packy_con <- mice::complete(imp_packy_con, 10)
+sum(is.na(completed_imp_packy_con$Pack_years_con)) # must be 0
+
+completed_imp_packy_con <- merge(completed_imp_packy_con, data_packY_con, by = "Sequential_number")
+
+# If Pack_years_cat is available, put Pack_years_con back to NA
+completed_imp_packy_con <- completed_imp_packy_con %>%
+  mutate(Pack_years_con =
+           case_when(
+             PackY_con_0NA_1_2 == 0 ~ NA,
+             PackY_con_0NA_1_2 == 1 ~ Pack_years_con,
+             PackY_con_0NA_1_2 == 2 ~ Pack_years_con
+           ))
+
+```
+
+
+```{r, eval = FALSE}
+# Replace NA in Pack_years_cat using newly imputed Pack_years_con
+completed_imp_packy_con <- completed_imp_packy_con %>%
+  mutate(Pack_years_cat = case_when(
+    is.na(Pack_years_cat) & Pack_years_con > 0 & Pack_years_con < 10 ~ "<10 cigarettes per day",
+    is.na(Pack_years_cat) & Pack_years_con >= 10 ~ ">=10 cigarettes per day",
+    is.na(Pack_years_cat) & Pack_years_con == 0  ~ "0 cigarettes per day",
+    TRUE ~ as.character(Pack_years_cat)
+  ))
+
+sum(is.na(completed_imp_packy_con$Pack_years_cat)) # should be 0
+```
+
+
+```{r, eval = FALSE}
+# Include Minimum for check later
+completed_imp_packy_con <- completed_imp_packy_con %>%
+  mutate(Pack_years_min =
+           case_when(Pack_years_cat == "<10 cigarettes per day" ~ 0.001,
+                     Pack_years_cat == ">=10 cigarettes per day" ~ 10,
+                     Pack_years_cat == "0 cigarettes per day" ~ 0))
+```
+
+
+```{r, eval = FALSE}
+# Include Maximum for check later
+completed_imp_packy_con <- completed_imp_packy_con %>%
+  mutate(Pack_years_max =
+           case_when(Pack_years_cat == "<10 cigarettes per day" ~ 9.9,
+                     Pack_years_cat == ">=10 cigarettes per day" ~ 20,
+                     Pack_years_cat == "0 cigarettes per day" ~ 0))
+```
+
+
+```{r, eval = FALSE}
+# Take out the Pack years variables from completed_imp_packy_con, because these should not be imputed
+data_imp_packY2 <- data.frame(Sequential_number = completed_imp_packy_con$Sequential_number, 
+                              Pack_years_con = completed_imp_packy_con$Pack_years_con, 
+                              Pack_years_cat = completed_imp_packy_con$Pack_years_cat, 
+                              Pack_years_min = completed_imp_packy_con$Pack_years_min, 
+                              Pack_years_max = completed_imp_packy_con$Pack_years_max, 
+                              PackY_con_0NA_1_2 = completed_imp_packy_con$PackY_con_0NA_1_2)
+```
+
+
+```{r, eval = FALSE}
+# Now impute Pack_years_con using the restrictions of the completed Pack_years_cat
+set.seed(123)
+
+data_imp_packY <- data_arm_age12[, c(1,7,11,14,22,30,42,44,45,52,58:60,62:64,68,76,86:90)] # variables to be imputed; make sure to leave out Pack_years_con
+data_imp_packY2 <- merge(data_imp_packY2, data_imp_packY, by = "Sequential_number")
+
+factors <- c(6,8,10:21)
+data_imp_packY2 <- data_imp_packY2 %>% mutate(across(all_of(factors), as.factor))
+
+predM <- make.predictorMatrix(data_imp_packY2) # create predictor matrix
+predM[c("Sequential_number","PackY_con_0NA_1_2","Pack_years_min", "Pack_years_max"), ] <- 0 
+predM[, c("Sequential_number","PackY_con_0NA_1_2","Pack_years_min", "Pack_years_max")] <- 0
+```
+
+
+```{r, eval = FALSE}
+# Use post-processing to squeeze Pack_years_con within boundaries of Pack_years_cat
+post <- make.post(data_imp_packY2)
+
+post["Pack_years_con"] <- "imp[[j]][data_imp_packY2$Pack_years_cat[!r[, j]] == '<10 cigarettes per day', i] <- squeeze(imp[[j]][data_imp_packY2$Pack_years_cat[!r[, j]] == '<10 cigarettes per day', i], c(0.001, 9.9))
+imp[[j]][data_imp_packY2$Pack_years_cat[!r[, j]] == '>=10 cigarettes per day', i] <- squeeze(imp[[j]][data_imp_packY2$Pack_years_cat[!r[, j]] == '>=10 cigarettes per day', i], c(10, 20))
+imp[[j]][data_imp_packY2$Pack_years_cat[!r[, j]] == '0 cigarettes per day', i] <- squeeze(imp[[j]][data_imp_packY2$Pack_years_cat[!r[, j]] == '0 cigarettes per day', i], c(0, 0))
+"
+
+```
+
+
+```{r, eval = FALSE}
+imp_packy <- mice(data_imp_packY2, m = 10, post=post, seed = 123, predictorMatrix = predM)
+imp_packy$loggedEvents # check logged events
+```
+
+
+```{r, eval = FALSE}
+# Check imputed versus original values
+densityplot(imp_packy)
+```
+
+
+```{r, eval = FALSE}
+# Choose one imputed data set
+completed_imp_packy <- mice::complete(imp_packy, 10)
+
+# Check if the squeezing worked using minimum and maximum
+completed_imp_packy$Check_PackYmin = completed_imp_packy$Pack_years_con >= completed_imp_packy$Pack_years_min
+completed_imp_packy$Check_PackYmax = completed_imp_packy$Pack_years_con <= completed_imp_packy$Pack_years_max
+
+nrow(filter(completed_imp_packy, Check_PackYmin == FALSE)) # should be 0
+nrow(filter(completed_imp_packy, Check_PackYmax == FALSE)) # should be 0
+
+sum(is.na(completed_imp_packy$Pack_years_con)) # should be 0
+
+# Now data frame completed_imp_packy has the imputed Pack_years_con
+```
+
+
+# Creating new data frame with (single) imputed variables Age, BMI and Pack years
+
+```{r, eval = FALSE}
+# Put the imputed variables into new data frames
+data_age_con_final <- data.frame(Age = completed_imp_age2$Age_con, 
+                                 Sequential_number = completed_imp_age2$Sequential_number)
+
+data_bmi_con_final <- data.frame(BMI = completed_imp_bmi2$BMI_con, 
+                                 Sequential_number = completed_imp_bmi2$Sequential_number)
+
+data_packy_con_final <- data.frame(Pack_years = completed_imp_packy$Pack_years_con, 
+                                   Sequential_number = completed_imp_packy$Sequential_number)
+
+```
+
+
+```{r, eval = FALSE}
+# Remove the variables from original data set
+data_arm_age12.SI <- data_arm_age12[,!names(data_arm_age12) %in% 
+                                      c("Age", 
+                                        "Age_cat", 
+                                        "Age_con", 
+                                        "Age_min", 
+                                        "Age_max", 
+                                        "Age_con_0NA_1_2", 
+                                        "BMI", 
+                                        "BMI_cat", 
+                                        "BMI_con", 
+                                        "BMI_min", 
+                                        "BMI_max", 
+                                        "BMI_con_0NA_1_2", 
+                                        "Pack_years", 
+                                        "Pack_years_cat", 
+                                        "Pack_years_con", 
+                                        "Pack_years_min", 
+                                        "Pack_years_max",
+                                        "PackY_con_0NA_1_2")]
+
+```
+
+
+```{r, eval = FALSE}
+# Merge data sets by Sequential number
+data_arm_age12.SI <- merge(data_arm_age12.SI, data_age_con_final, by = "Sequential_number")
+data_arm_age12.SI <- merge(data_arm_age12.SI, data_bmi_con_final, by = "Sequential_number")
+data_arm_age12.SI <- merge(data_arm_age12.SI, data_packy_con_final, by = "Sequential_number")
+
+```
+
+
+```{r, eval = FALSE}
+# Change order of variables to maintain original structure
+data_arm_age12.SI <- data_arm_age12.SI[,c(1:4,83,5,84,6:18,85,19:82)]
+```
+
+
+```{r, eval = FALSE}
+# Save data_arm_age12.SI to a CSV file
+# Fill in the date at xxxx-xx-xx eg 2025-06-27 for 27th June 2025
+write.csv(data_arm_age12.SI, file = "xxxx-xx-xx data_arm_age12_SI.csv", row.names = FALSE)
+```

@@ -1,0 +1,140 @@
+---
+title: "2025-06-2027 ORACLE Markdown_pt3_missing_value_patterns"
+author: "FL Meulmeester"
+date: "2025-06-27"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+<style>
+body {
+text-align: justify}
+</style>
+
+<style type="text/css">
+  body{
+  font-size: 12pt;
+}
+</style>
+
+<style type="text/css">
+.main-container {
+  max-width: 1600px;
+  margin-left: auto;
+  margin-right: auto;
+}
+</style>
+
+
+# Loading the libraries
+ 
+```{r Packages, eval = FALSE, results = 'hide'}
+
+# Set CRAN mirror
+r <- getOption("repos")
+r["CRAN"] <- "http://cran.us.r-project.org"
+options(repos = r)
+
+# Vector of required packages
+Packages <- c(
+  "readstata13", "readxl", "dplyr", "tidyverse", "data.table", "ggplot2", "car",
+  "epiDisplay", "lubridate", "table1", "mice", "VIM", "caret", "lsr", "tidymodels",
+  "sjPlot", "stargazer", "Gmisc", "purrr", "corrplot", "ggcorrplot", "Hmisc",
+  "naniar", "lme4", "MASS", "broom", "nnet", "pROC", "rms", "gridExtra",
+  "survival", "ggsurvfit", "survminer", "fmsb", "DescTools"
+)
+
+# Install any missing packages
+installed <- Packages %in% rownames(installed.packages())
+if (any(!installed)) {
+  install.packages(Packages[!installed])
+}
+
+# Load all packages
+# Use invisible() to keep your console output clean
+invisible(lapply(Packages, library, character.only = TRUE))
+```
+
+
+# Data import
+
+```{r, eval = FALSE}
+# This R code uses the data cleaned and using the inclusion criteria in 2025-06-2027 ORACLE Markdown_pt2_inclusion_criteria_flowchart
+# Read as data_arm_age12
+
+data_arm_age12 <- read.csv("C:/Users/YourName/Documents/xxxx-xx-xx data_ORACLE_INCLUDED.csv")
+
+```
+
+
+# Figure S1-S4: Missing value patterns
+
+```{r, eval = FALSE}
+# Figure S1
+
+# Save the plot as a PNG file with specified dimensions
+png("na_patterns_plot.png", width = 1200, height = 800)
+
+# Calculate the patterns of missing values in the data
+na.patterns <- naclus(data_arm_age12) 
+
+# Plot the patterns of missing values with specific y-axis label and color
+plot(na.patterns, ylab="Fraction of missing values in common", col='red')
+
+dev.off() # close the PNG
+```
+
+
+```{r, eval = FALSE}
+# Figure S2
+
+# Save the plots as a PNG file with specified dimensions
+png("Common_naplots.png", width = 1200, height = 1400)
+
+# Set up a 2x2 layout for the plots
+layout(matrix(1:4, nrow = 2, ncol = 2))
+
+naplot(na.patterns, col="red", cex=1.1, cex.main=0.9) # render the first plot
+naplot(na.patterns, col="red", cex=1.1, cex.main=0.9) # render the second plot
+
+dev.off() # close the PNG
+```
+
+
+```{r, eval = FALSE}
+# Figure S3
+
+# Select a subset of columns from the data for main analysis
+data_main <- data_ORACLE[,c(7,8,37,42:44,46,47)]
+
+# Calculate the patterns of missing values for the selected subset of data
+na.patterns2 <- naclus(data_main)
+
+# Save the plots as a PNG file with specified dimensions
+png("Common_naplots_main.png", width = 800, height = 800)
+
+# Set up a 2x2 layout for the plots
+layout(matrix(1:4, nrow = 2, ncol = 2))
+
+naplot(na.patterns2, col="red", cex=1.1, cex.main=0.9) # render the first plot
+naplot(na.patterns2, col="red", cex=1.1, cex.main=0.9) # render the second plot
+
+dev.off() # close the PNG
+
+```
+
+
+```{r, eval = FALSE}
+# Figure S4
+
+# Save the plot as a PNG file with specified dimensions
+png("intersections_missing_main.png", width = 700, height = 500)
+
+# Create an upset plot to visualize the intersections of missing values in the subset of data
+naniar::gg_miss_upset(data = data_main)
+dev.off() # close the PNG
+
+```

@@ -1,0 +1,304 @@
+---
+title: "2025-06-27 ORACLE Markdown_pt7_cstat_membership_model"
+author: "FL Meulmeester"
+date: "2025-06-30"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+<style>
+body {
+text-align: justify}
+</style>
+
+<style type="text/css">
+  body{
+  font-size: 12pt;
+}
+</style>
+
+<style type="text/css">
+.main-container {
+  max-width: 1600px;
+  margin-left: auto;
+  margin-right: auto;
+}
+</style>
+
+
+# Loading the libraries
+ 
+```{r Packages, eval = FALSE, results = 'hide'}
+
+# Set CRAN mirror
+r <- getOption("repos")
+r["CRAN"] <- "http://cran.us.r-project.org"
+options(repos = r)
+
+# Vector of required packages
+Packages <- c(
+  "readstata13", "readxl", "dplyr", "tidyverse", "data.table", "ggplot2", "car",
+  "epiDisplay", "lubridate", "table1", "mice", "VIM", "caret", "lsr", "tidymodels",
+  "sjPlot", "stargazer", "Gmisc", "purrr", "corrplot", "ggcorrplot", "Hmisc",
+  "naniar", "lme4", "MASS", "broom", "nnet", "pROC", "rms", "gridExtra",
+  "survival", "ggsurvfit", "survminer", "fmsb", "DescTools"
+)
+
+# Install any missing packages
+installed <- Packages %in% rownames(installed.packages())
+if (any(!installed)) {
+  install.packages(Packages[!installed])
+}
+
+# Load all packages
+# Use invisible() to keep your console output clean
+invisible(lapply(Packages, library, character.only = TRUE))
+```
+
+
+# Data import
+
+```{r, eval = FALSE}
+# This R code uses the multiply imputed data with the imputed values of systematically missings put back to NA (_sysREMOVED)  -- see pt6 of the ORACLE Markdown for the imputation process
+
+imp_data_ORACLE_final_sysREMOVED <- read.csv('xxxx-xx-xx imp_data_ORACLE_final_COMPLETE.csv')
+
+```
+
+
+# Membership model (c-statistic)
+
+```{r, eval = FALSE}
+# Membership model
+
+## Take one imputed data set from the completed data set with the imputed values of the systematically missings removed 
+subset_mm <- subset(imp_data_ORACLE_final_sysREMOVED, .imp == 1)
+
+## Create dummy variable per trial, and a dummy for the smallest 4 trials combined
+subset_mm <- within(subset_mm, {
+  AZISAST <- ifelse(Enrolled_Trial_name == "AZISAST", 1, 0)
+  BENRAP2B <- ifelse(Enrolled_Trial_name == "BENRAP2B", 1, 0)
+  CAPTAIN <- ifelse(Enrolled_Trial_name == "CAPTAIN", 1, 0)
+  COSTA <- ifelse(Enrolled_Trial_name == "COSTA", 1, 0)
+  DREAM <- ifelse(Enrolled_Trial_name == "DREAM", 1, 0)
+  DRI12544 <- ifelse(Enrolled_Trial_name == "DRI12544", 1, 0)
+  EXTRA <- ifelse(Enrolled_Trial_name == "EXTRA", 1, 0)
+  LAVOLTA_1 <- ifelse(Enrolled_Trial_name == "LAVOLTA_1", 1, 0)
+  LAVOLTA_2 <- ifelse(Enrolled_Trial_name == "LAVOLTA_2", 1, 0)
+  LUSTER_1 <- ifelse(Enrolled_Trial_name == "LUSTER_1", 1, 0)
+  LUSTER_2 <- ifelse(Enrolled_Trial_name == "LUSTER_2", 1, 0)
+  LUTE <- ifelse(Enrolled_Trial_name == "LUTE", 1, 0)
+  MILLY <- ifelse(Enrolled_Trial_name == "MILLY", 1, 0)
+  NAVIGATOR <- ifelse(Enrolled_Trial_name == "NAVIGATOR", 1, 0)
+  Novel_START <- ifelse(Enrolled_Trial_name == "Novel_START", 1, 0)
+  PACT <- ifelse(Enrolled_Trial_name == "PACT", 1, 0)
+  PATHWAY <- ifelse(Enrolled_Trial_name == "PATHWAY", 1, 0)
+  PRACTICAL <- ifelse(Enrolled_Trial_name == "PRACTICAL", 1, 0)
+  QUEST <- ifelse(Enrolled_Trial_name == "QUEST", 1, 0)
+  STRATOS_1 <- ifelse(Enrolled_Trial_name == "STRATOS_1", 1, 0)
+  STRATOS_2 <- ifelse(Enrolled_Trial_name == "STRATOS_2", 1, 0)
+  VERSE <- ifelse(Enrolled_Trial_name == "VERSE", 1, 0)
+  COMBINED <- ifelse(Enrolled_Trial_name %in% c("AZISAST","LUTE","PACT","VERSE"), 1, 0)
+
+})
+
+```
+
+
+```{r, eval = FALSE}
+# Fit a logistic model with the dummy variable as dependent and the main variables as independent 
+
+# Small trials combined
+model_mm <- lrm(COMBINED ~ 
+                  Any_severe_attack_previous_12m_0no_1yes + 
+                  FEV1_preBD_PCT_Baseline + 
+                  ACQ_baseline_score_mean + 
+                  Blood_Eos_baseline_x10_9_cells_per_L_zeroreplaced + 
+                  FeNO_baseline_ppb, 
+                data = subset_mm)
+
+model_mm
+```
+
+```{r, eval = FALSE}
+# Trial 1: AZISAST
+model_AZI <- update(model_mm, AZISAST ~ .) # update the previous model by replacing the trial
+
+model_AZI
+```
+
+
+```{r, eval = FALSE}
+# Trial 2: BENRAP2B
+model_BEN <- update(model_mm, BENRAP2B ~ .)
+
+model_BEN
+``` 
+
+
+```{r, eval = FALSE}
+# Trial 3: CAPTAIN
+model_CAP <-  update(model_mm, CAPTAIN ~ .)
+
+model_CAP
+```
+
+
+```{r, eval = FALSE}
+# Trial 4: COSTA
+model_COS <-  update(model_mm, COSTA ~ .)
+
+model_CO
+
+```
+
+
+```{r, eval = FALSE}
+# Trial 5: DREAM
+model_DREAM <-  update(model_mm, DREAM ~ .)
+
+model_DREAM
+```
+
+
+```{r, eval = FALSE}
+# Trial 6: DRI12544
+model_DRI <- update(model_mm, DRI12544 ~ .)
+
+model_DRI
+```
+
+
+```{r, eval = FALSE}
+# Trial 7: EXTRA
+# No ACQ information available
+
+model_EXTRA <- update(model_mm, EXTRA ~ . - ACQ_baseline_score_mean)
+
+model_EXTRA
+```
+
+
+```{r, eval = FALSE}
+# Trial 8: LAVOLTA_1
+model_LAV1 <- update(model_mm, LAVOLTA_1 ~ .)
+
+model_LAV1
+```
+
+
+```{r, eval = FALSE}
+# Trial 9: LAVOLTA_2
+model_LAV2 <- update(model_mm, LAVOLTA_2 ~ .)
+
+model_LAV2
+```
+
+
+```{r, eval = FALSE}
+# Trial 10: LUSTER_1
+model_LUSTER1 <- update(model_mm, LUSTER_1 ~ .)
+
+model_LUSTER1
+```
+
+
+```{r, eval = FALSE}
+# Trial 11: LUSTER_2
+model_LUSTER2 <- update(model_mm, LUSTER_2 ~ .)
+
+model_LUSTER2
+```
+
+
+```{r, eval = FALSE}
+# Trial 12: LUTE
+model_LUTE <- update(model_mm, LUTE ~ .)
+
+model_LUTE
+```
+
+
+```{r, eval = FALSE}
+# Trial 13: MILLY
+model_MILLY <- update(model_mm, MILLY ~ .)
+
+model_MILLY
+```
+
+
+```{r, eval = FALSE}
+# Trial 14: NAVIGATOR
+## Any_attack = always 1
+model_NAVI <- update(model_mm, NAVIGATOR ~ . - Any_severe_attack_previous_12m_0no_1yes)
+
+model_NAVI
+```
+
+
+```{r, eval = FALSE}
+# Trial 15: Novel_START
+## No FEV1% information available
+model_Novel <- update(model_mm, Novel_START ~ . - FEV1_preBD_PCT_Baseline)
+
+model_Novel
+```
+
+
+```{r, eval = FALSE}
+# Trial 16: PACT
+## No attack history and ACQ information available
+model_PACT <- update(model_mm, PACT ~ . - Any_severe_attack_previous_12m_0no_1yes - ACQ_baseline_score_mean)
+
+model_PACT
+```
+
+
+```{r, eval = FALSE}
+# Trial 17: PATHWAY
+model_PATH <- update(model_mm, PATHWAY ~ .)
+
+model_PATH
+```
+
+
+```{r, eval = FALSE}
+# Trial 18: PRACTICAL
+## No FEV1% information available
+model_PRAC <- update(model_mm, PRACTICAL ~ . - FEV1_preBD_PCT_Baseline)
+```
+
+
+```{r, eval = FALSE}
+# Trial 19: QUEST
+## No attack history information available
+model_QUEST <- update(model_mm, QUEST ~ . - Any_severe_attack_previous_12m_0no_1yes)
+```
+
+
+```{r, eval = FALSE}
+# Trial 20: STRATOS_1
+model_STRATOS1 <- update(model_mm, STRATOS_1 ~ .)
+
+model_STRATOS1
+```
+
+
+```{r, eval = FALSE}
+# Trial 21: STRATOS_2
+model_STRATOS2 <- update(model_mm, STRATOS_2 ~ .)
+
+model_STRATOS2
+```
+
+
+```{r, eval = FALSE}
+# Trial 22: VERSE
+model_VERSE <- update(model_mm, VERSE ~ .)
+
+model_VERSE
+```
+

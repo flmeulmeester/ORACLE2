@@ -1,0 +1,363 @@
+---
+title: "2025-06-2027 ORACLE Markdown_pt4_baseline_characteristics"
+author: "FL Meulmeester"
+date: "2025-06-27"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+<style>
+body {
+text-align: justify}
+</style>
+
+<style type="text/css">
+  body{
+  font-size: 12pt;
+}
+</style>
+
+<style type="text/css">
+.main-container {
+  max-width: 1600px;
+  margin-left: auto;
+  margin-right: auto;
+}
+</style>
+
+
+# Loading the libraries
+ 
+```{r Packages, eval = FALSE, results = 'hide'}
+
+# Set CRAN mirror
+r <- getOption("repos")
+r["CRAN"] <- "http://cran.us.r-project.org"
+options(repos = r)
+
+# Vector of required packages
+Packages <- c(
+  "readstata13", "readxl", "dplyr", "tidyverse", "data.table", "ggplot2", "car",
+  "epiDisplay", "lubridate", "table1", "mice", "VIM", "caret", "lsr", "tidymodels",
+  "sjPlot", "stargazer", "Gmisc", "purrr", "corrplot", "ggcorrplot", "Hmisc",
+  "naniar", "lme4", "MASS", "broom", "nnet", "pROC", "rms", "gridExtra",
+  "survival", "ggsurvfit", "survminer", "fmsb", "DescTools"
+)
+
+# Install any missing packages
+installed <- Packages %in% rownames(installed.packages())
+if (any(!installed)) {
+  install.packages(Packages[!installed])
+}
+
+# Load all packages
+# Use invisible() to keep your console output clean
+invisible(lapply(Packages, library, character.only = TRUE))
+```
+
+
+# Data import
+
+```{r, eval = FALSE}
+# This R code uses the data cleaned and using the inclusion criteria in 2025-06-2027 ORACLE Markdown_pt2_inclusion_criteria_flowchart
+# Read as data_arm_age12
+
+data_arm_age12 <- read.csv("C:/Users/YourName/Documents/xxxx-xx-xx data_ORACLE_INCLUDED.csv")
+
+```
+
+
+# Table 2: Baseline characteristics
+
+```{r, eval = FALSE}
+# Label variables for a clear Table 2 output
+# Add units for certain variables
+
+label(data_arm_age12$Age) <- "Age"
+
+data_arm_age12$Gender_0Female_1Male <- factor(data_arm_age12$Gender_0Female_1Male, levels=c(0,1), labels=c("Female", "Male"))
+label(data_arm_age12$Gender_0Female_1Male) <- "Sex, n(%)"
+
+label(data_arm_age12$Treatment_step) <- "Treatment step, n(%)"
+
+data_arm_age12$Ethnicity <- factor(data_arm_age12$Ethnicity,
+                                 levels=c("American_Indian_or_Alaska_Native",
+                                          "Asian",
+                                          "Black_or_African_American",
+                                          "Maori",
+                                          "Multiple",
+                                          "Native_Hawaiian_or_other_Pacific_Islander",
+                                          "Other",
+                                          "White"))
+data_arm_age12$Ethnicity <- factor(data_arm_age12$Ethnicity, 
+                                   levels=c("American_Indian_or_Alaska_Native",
+                                            "Asian",
+                                            "Black_or_African_American",
+                                            "Maori",
+                                            "Multiple",
+                                            "Native_Hawaiian_or_other_Pacific_Islander",
+                                            "Other",
+                                            "White"))
+label(data_arm_age12$Ethnicity) <- "Ethnicity, n(%)"
+
+data_arm_age12$Region <- factor(data_arm_age12$Region,
+                                levels=c("Asia",
+                                         "Europe",
+                                         "North_America",
+                                         "Oceania",
+                                         "South_Africa",
+                                         "South_America"))
+data_arm_age12$Region <- factor(data_arm_age12$Region,
+                                levels=c("Asia",
+                                         "Europe",
+                                         "North_America",
+                                         "Oceania",
+                                         "South_Africa",
+                                         "South_America"), labels=c("Asia","Europe","North_America","Oceania","South_Africa","South_America"))
+label(data_arm_age12$Region) <- "Region, n(%)"
+
+label(data_arm_age12$Blood_Eos_baseline_x10_9_cells_per_L_zeroreplaced) <- "Blood eosinophils"
+units(data_arm_age12$Blood_Eos_baseline_x10_9_cells_per_L_zeroreplaced) <- "x10^9 cells/L"
+
+label(data_arm_age12$FeNO_baseline_ppb) <- "FeNO"
+units(data_arm_age12$FeNO_baseline_ppb) <- "ppb"
+
+label(data_arm_age12$Total_IgE) <- "Total IgE"
+units(data_arm_age12$Total_IgE) <- "ng/mL"
+
+label(data_arm_age12$BMI) <- "Body Mass Index"
+units(data_arm_age12$BMI) <- "kg/m2"
+
+label(data_arm_age12$FEV1_preBD_PCT_Baseline) <- "FEV1"
+units(data_arm_age12$FEV1_preBD_PCT_Baseline) <- "% of predicted"
+
+label(data_arm_age12$FEV1_FVC_ratio) <- "FEV1/FVC"
+
+data_arm_age12$Previous_ICU_or_intubation_0no_1yes <- factor(data_arm_age12$Previous_ICU_or_intubation_0no_1yes, levels=c(1,0), labels=c("Yes", "No"))
+label(data_arm_age12$Previous_ICU_or_intubation_0no_1yes) <- "Previous ICU or intubation, n(%)"
+
+data_arm_age12$Previous_ICU_0no_1yes_9999notknown <- factor(data_arm_age12$Previous_ICU_0no_1yes_9999notknown, levels=c(1,0), labels=c("Yes", "No"))
+label(data_arm_age12$Previous_ICU_0no_1yes_9999notknown) <- "Previous ICU, n(%)"
+
+data_arm_age12$Previous_Intubation_0no_1yes_9999notknown <- factor(data_arm_age12$Previous_Intubation_0no_1yes_9999notknown, levels=c(1,0), labels=c("Yes", "No"))
+label(data_arm_age12$Previous_Intubation_0no_1yes_9999notknown) <- "Previous intubation, n(%)"
+
+data_arm_age12$Atopy_history_0no_1yes_9999notknown <- factor(data_arm_age12$Atopy_history_0no_1yes_9999notknown, levels=c(1,0), labels=c("Yes", "No"))
+label(data_arm_age12$Atopy_history_0no_1yes_9999notknown) <- "Atopy history, n(%)"
+
+data_arm_age12$Airborne_allergen_sensitisation_on_testing_0no_1yes_9999notknown <- factor(data_arm_age12$Airborne_allergen_sensitisation_on_testing_0no_1yes_9999notknown, levels=c(1,0), labels=c("Yes", "No"))
+label(data_arm_age12$Airborne_allergen_sensitisation_on_testing_0no_1yes_9999notknown) <- "Allergy testing positive, n(%)"
+
+data_arm_age12$Eczema_0no_1yes_9999notknown <- factor(data_arm_age12$Eczema_0no_1yes_9999notknown, levels=c(1,0), labels=c("Yes", "No"))
+label(data_arm_age12$Eczema_0no_1yes_9999notknown) <- "Eczema, n(%)"
+
+data_arm_age12$AllergicRhinitis__0no_1yes_9999notknown <- factor(data_arm_age12$AllergicRhinitis__0no_1yes_9999notknown, levels=c(1,0), labels=c("Yes", "No"))
+label(data_arm_age12$AllergicRhinitis__0no_1yes_9999notknown) <- "Allergic rhinitis, n(%)"
+
+data_arm_age12$Chronic_Rhinosinusitis_0no_1yes_9999notknown <- factor(data_arm_age12$Chronic_Rhinosinusitis_0no_1yes_9999notknown, levels=c(1,0), labels=c("Yes", "No"))
+label(data_arm_age12$Chronic_Rhinosinusitis_0no_1yes_9999notknown) <- "Chronic rhinosinusitis, n(%)"
+
+data_arm_age12$Nasal_polyposis_0no_1yes_9999notknown <- factor(data_arm_age12$Nasal_polyposis_0no_1yes_9999notknown, levels=c(1,0), labels=c("Yes", "No"))
+label(data_arm_age12$Nasal_polyposis_0no_1yes_9999notknown) <- "Nasal polyposis, n(%)"
+
+data_arm_age12$Previous_nasal_polypectomy_0no_1yes_9999notknown <- factor(data_arm_age12$Previous_nasal_polypectomy_0no_1yes_9999notknown, levels=c(1,0), labels=c("Yes", "No"))
+label(data_arm_age12$Previous_nasal_polypectomy_0no_1yes_9999notknown) <- "Previous nasal polypectomy, n(%)"
+
+label(data_arm_age12$ACQ_baseline_score_mean) <- "ACQ-5"
+
+data_arm_age12$Psychiatric_disease_0no_1yes_9999notknown <- factor(data_arm_age12$Psychiatric_disease_0no_1yes_9999notknown, levels=c(1,0), labels=c("Yes", "No"))
+label(data_arm_age12$Psychiatric_disease_0no_1yes_9999notknown) <- "Psychiatric disease, n(%)"
+
+data_arm_age12$Smoking_0never_1ex_2current <- factor(data_arm_age12$Smoking_0never_1ex_2current, levels=c(0,1,2), labels=c("Never smoked","Ex-smoker", "Current smoker"))
+label(data_arm_age12$Smoking_0never_1ex_2current) <- "Smoking history, n(%)"
+
+label(data_arm_age12$Psy_disease_type_0none_1depressionORanxiety_2psychosis_3nontobaccosubstanceabuse_4other_9999notknown) <- "Psychiatric disease, n(%)"
+
+data_arm_age12$Any_ICS_prescribed_0no_1yes <- factor(data_arm_age12$Any_ICS_prescribed_0no_1yes, levels=c(1,0), labels=c("Yes", "No"))
+label(data_arm_age12$Any_ICS_prescribed_0no_1yes) <- "On ICS, n(%)"
+
+data_arm_age12$ICS_DOSE_CLASS <- factor(data_arm_age12$ICS_DOSE_CLASS, levels=c("0","Low","Medium","High"))
+label(data_arm_age12$ICS_DOSE_CLASS) <- "ICS Dose, n(%)"
+
+data_arm_age12$SABA_prescribed__0no_1yes <- factor(data_arm_age12$SABA_prescribed__0no_1yes, levels=c(1,0), labels=c("Yes", "No"))
+label(data_arm_age12$SABA_prescribed__0no_1yes) <- "On SABA, n(%)"
+
+label(data_arm_age12$SABA_actuations_per_day_average_PreTrial) <- "SABA actuations per day pre trial"
+label(data_arm_age12$SABA_actuations_per_day_average_InTrial) <- "SABA actuations
+
+```
+
+
+```{r, eval = FALSE}
+# Identify observations for Age and BMI with categorical values
+# Assign levels to the newly created variables indicating the format (continuous or in categories)
+
+data_arm_age12 <- data_arm_age12 %>% 
+  mutate(Age_format = case_when(
+    Age_cat == "NA" ~ NA,
+    !is.na(Age) ~ "Continuous",
+    TRUE ~ "In categories"))
+data_arm_age12$Age_format <- factor(data_arm_age12$Age_format, levels=c("Continuous","In categories"))
+
+data_arm_age12 <- data_arm_age12 %>% 
+  mutate(BMI_format = case_when(
+    BMI_cat == "NA" ~ NA,
+    !is.na(BMI) ~ "Continuous",
+    TRUE ~ "In categories"))
+data_arm_age12$BMI_format <- factor(data_arm_age12$BMI_format, levels=c("Continuous","In categories"))
+```
+
+
+```{r, eval = FALSE}
+# Create groups of cut-off values for variables that are additionally shown in groups in Table 2
+# Label the different groups per variable
+
+data_arm_age12$FEV1_PCT_reversibility_postBD_by_group <- 
+  cut(data_arm_age12$FEV1_reversibility_percent_postBD_real, 
+      breaks = c(-1000,12,1000), 
+      labels=c("<12%","⩾12%"))
+
+label(data_arm_age12$FEV1_PCT_reversibility_postBD_by_group) <- "FEV1 reversibility (by group)"
+
+data_arm_age12$ACQ_baseline_score_mean_by_group <- 
+  cut(data_arm_age12$ACQ_baseline_score_mean, 
+      breaks = c(-1000,1.5,1000), 
+      labels=c("<1.5","⩾1.5%"))
+
+label(data_arm_age12$ACQ_baseline_score_mean_by_group) <- "ACQ-5 (by group)"
+
+data_arm_age12$Exacerbations_during_follow_up_by_group <- 
+  cut(data_arm_age12$Number_severe_asthma_attacks_during_followup, 
+      breaks = c(-1000,0.9,1000), 
+      labels=c("0","⩾1"))
+
+label(data_arm_age12$Exacerbations_during_follow_up_by_group) <- "In trial severe exacerbations, n(%)"
+```
+
+
+```{r, eval = FALSE}
+# Code function for continuous and categorical variables output in Table 2
+# Continuous: Mean (SD), Median (IQR), Geometric mean (GSD), Range/Minimum/Maximum
+# Categorical: Percentage
+
+my.render.cont <- function(x) {
+  with(stats.apply.rounding(stats.default(x, ), digits = 3), 
+       c("", "Mean (SD)"= sprintf("%s (&plusmn; %s)", MEAN, SD), 
+         "Median (IQR)"= sprintf(paste("%s (%s - %s)"), MEDIAN, Q1, Q3),
+         "Geo. mean (GSD)"= sprintf("%s (&plusmn; %s)", GMEAN, GSD),
+         "Geo. mean (IQR)"= sprintf(paste("%s (%s - %s)"), GMEAN, Q1, Q3), 
+         "Range"=sprintf("%s - %s", MIN, MAX)))}
+
+my.render.cat <- function(x) {
+  c("", sapply(stats.default(x), function(y) with(y, sprintf("%d (%0.0f%%)", FREQ, PCT))))}
+```
+
+
+```{r, eval = FALSE}
+# Table 2 by trial
+
+Table2_by_trial <- 
+  table1(~ Age + # Add all variables for Table 2
+           Age_format + 
+           Gender_0Female_1Male + 
+           Ethnicity + 
+           Region + 
+           Treatment_step +
+           Blood_Eos_baseline_x10_9_cells_per_L_zeroreplaced +
+           FeNO_baseline_ppb + 
+           Total_IgE + 
+           BMI + 
+           BMI_format +
+           FEV1_preBD_PCT_Baseline + 
+           FEV1_FVC_ratio + 
+           FEV1_reversibility_percent_postBD_real + 
+           FEV1_PCT_reversibility_postBD_by_group + 
+           Previous_ICU_or_intubation_0no_1yes + 
+           Previous_ICU_0no_1yes_9999notknown + 
+           Previous_Intubation_0no_1yes_9999notknown + 
+           Atopy_history_0no_1yes_9999notknown +
+           Airborne_allergen_sensitisation_on_testing_0no_1yes_9999notknown + 
+           Eczema_0no_1yes_9999notknown +
+           AllergicRhinitis__0no_1yes_9999notknown + 
+           Chronic_Rhinosinusitis_0no_1yes_9999notknown + 
+           Nasal_polyposis_0no_1yes_9999notknown + 
+           Previous_nasal_polypectomy_0no_1yes_9999notknown + 
+           ACQ_baseline_score_mean + 
+           ACQ_baseline_score_mean_by_group + 
+           Smoking_0never_1ex_2current + 
+           Psychiatric_disease_0no_1yes_9999notknown + 
+           Any_ICS_prescribed_0no_1yes + 
+           ICS_DOSE_CLASS + 
+           SABA_prescribed__0no_1yes + 
+           SABA_actuations_per_day_average_PreTrial + 
+           SABA_actuations_per_day_average_InTrial + 
+           maintenance_OCS_prescribed__0no_1yes + 
+           Intranasal_seroid_prescribed__0no_1yes + 
+           LABA_prescribed_0no_1yes + 
+           LAMA_prescribed__0no_1yes + 
+           Montelukast_prescribed__0no_1yes + 
+           Adherence_PreTrial_quantity + 
+           Adherence_InTrial_quantity_real + 
+           Any_attack_or_hospitalization_previous_12_months + 
+           Follow_up_duration_days_nozero + 
+           Exacerbations_during_follow_up_by_group 
+                  | Enrolled_Trial_name, # Add "|" to disentangle the data by a certain variable, here by enrolled trial
+                       overall = c(left="Total"), # Add "overall=" for a column with the total study population
+                       data = data_arm_age12,
+                       render.continuous = my.render.cont, # Add the functions for continuous and categorical variable output
+                       render.categorical = my.render.cat)
+
+# Print the table
+print(Table2_by_trial)
+```   
+
+
+```{r, eval = FALSE}
+# Other information for required Table 2
+
+## Total follow-up and number of severe asthma attacks
+table_total <- data.frame(c(sum(data_arm_age12$Follow_up_duration_years_nozero, na.rm=TRUE),
+                            sum(data_arm_age12$Number_severe_asthma_attacks_during_followup, na.rm=TRUE)))
+
+rownames(table_total) <- c("Follow up duration (year)","Nb of asthma attack during follow-up")
+colnames(table_total) <- "Total"
+
+## Follow-up duration in years
+sum(data_arm_age12$Follow_up_duration_years_nozero, na.rm=TRUE)
+
+table_sum_follow_up <- aggregate(data_arm_age12$Follow_up_duration_years_nozero, 
+                                 by = list(Category=data_arm_age12$Enrolled_Trial_name), 
+                                 FUN=sum)
+
+table_sum_follow_up <- t(table_sum_follow_up)
+
+colnames(table_sum_follow_up) <- table_sum_follow_up[1,]
+table_sum_follow_up <- table_sum_follow_up[2,]
+
+## Number of severe asthma attacks
+sum(data_arm_age12$Number_severe_asthma_attacks_during_followup, na.rm=TRUE)
+
+table_sum_asthma_attack <- aggregate(data_arm_age12$Number_severe_asthma_attacks_during_followup, 
+                                     by = list(Category = data_arm_age12$Enrolled_Trial_name), 
+                                     FUN=sum)
+
+table_sum_asthma_attack <- t(table_sum_asthma_attack)
+colnames(table_sum_asthma_attack) <- table_sum_asthma_attack[1,]
+table_sum_asthma_attack <- table_sum_asthma_attack[2,]
+
+## Create a new table with the total information
+table_sum_follow_up_and_asthma_attack <- rbind(table_sum_follow_up,table_sum_asthma_attack)
+rownames(table_sum_follow_up_and_asthma_attack)<- c("Follow up duration (year)","Nb of asthma attack during follow-up")
+table_sum_follow_up_and_asthma_attack <- cbind(table_total, table_sum_follow_up_and_asthma_attack)
+```
+
+
+```{r, eval = FALSE}
+# Export the table for follow-up duration and asthma attack sum
+# Fill in the date at xxxx-xx-xx eg 2025-06-27 for 27th June 2025
+write_xlsx(table_sum_follow_up_and_asthma_attack,"xxxx-xx-xx table_sum_follow_up_and_attack.xlsx")
+```
+
