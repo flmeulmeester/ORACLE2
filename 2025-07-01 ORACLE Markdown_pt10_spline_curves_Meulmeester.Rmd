@@ -1,0 +1,454 @@
+---
+title: "2025-07-01 ORACLE Markdown_pt10_spline_curves_density_plots_Meulmeester"
+author: "FL Meulmeester"
+date: "2025-07-01"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+<style>
+body {
+text-align: justify}
+</style>
+
+<style type="text/css">
+  body{
+  font-size: 12pt;
+}
+</style>
+
+<style type="text/css">
+.main-container {
+  max-width: 1600px;
+  margin-left: auto;
+  margin-right: auto;
+}
+</style>
+
+
+# Loading the libraries
+ 
+```{r Packages, eval = FALSE, results = 'hide'}
+
+# Set CRAN mirror
+r <- getOption("repos")
+r["CRAN"] <- "http://cran.us.r-project.org"
+options(repos = r)
+
+# Vector of required packages
+Packages <- c(
+  "readstata13", "readxl", "dplyr", "tidyverse", "data.table", "ggplot2", "car",
+  "epiDisplay", "lubridate", "table1", "mice", "VIM", "caret", "lsr", "tidymodels",
+  "sjPlot", "stargazer", "Gmisc", "purrr", "corrplot", "ggcorrplot", "Hmisc",
+  "naniar", "lme4", "MASS", "broom", "nnet", "pROC", "rms", "gridExtra",
+  "survival", "ggsurvfit", "survminer", "fmsb", "DescTools"
+)
+
+# Install any missing packages
+installed <- Packages %in% rownames(installed.packages())
+if (any(!installed)) {
+  install.packages(Packages[!installed])
+}
+
+# Load all packages
+# Use invisible() to keep your console output clean
+invisible(lapply(Packages, library, character.only = TRUE))
+```
+
+
+# Data import
+
+```{r, eval = FALSE}
+# This R code uses the multiply imputed data; two datasets: one with imputed values of systematically missings put back to NA (_sysREMOVED) and one with no missing/totally completed (_COMPLETE) -- see pt6 of the ORACLE Markdown for the imputation process
+
+imp_data_ORACLE_final_COMPLETE <- read.csv('xxxx-xx-xx imp_data_ORACLE_final_COMPLETE.csv')
+imp_data_ORACLE_final_sysREMOVED <- read.csv('xxxx-xx-xx imp_data_ORACLE_final_COMPLETE.csv')
+```
+
+
+# Figure 3A & 3C: Spline curve BEC FeNO & Spline curve FEV1% reversibility
+
+```{r, eval = FALSE}
+# Add a variable of FeNO and BEC with the original, non-log-transformed values
+# This step is only necessary if the variables BEC and FeNO have not been created yet in previous parts of the code
+
+imp_data_ORACLE_final_COMPLETE$BEC <- 
+  10^(imp_data_ORACLE_final_COMPLETE$Blood_Eos_baseline_x10_9_cells_per_L_zeroreplaced)
+
+imp_data_ORACLE_final_COMPLETE$FeNO <- 
+  10^(imp_data_ORACLE_final_COMPLETE$FeNO_baseline_ppb)
+
+imp_data_ORACLE_final_sysREMOVED$BEC <- 
+  10^(imp_data_ORACLE_final_sysREMOVED$Blood_Eos_baseline_x10_9_cells_per_L_zeroreplaced)
+
+imp_data_ORACLE_final_sysREMOVED$FeNO <- 
+  10^(imp_data_ORACLE_final_sysREMOVED$FeNO_baseline_ppb)
+```
+
+
+```{r, eval = FALSE}
+# Calculate the mean FeNO of the 10 imputations per patient in the dataset
+patient_mean_FeNO_NR <- imp_data_ORACLE_final_COMPLETE %>%
+  dplyr::group_by(Sequential_number) %>%
+  dplyr::summarize(mean_FeNO = mean(FeNO, na.rm = TRUE))
+```
+
+
+```{r, eval = FALSE}
+# Calculate the mean BEC of the 10 imputations per patient in the dataset
+patient_mean_BEC_NR <- imp_data_ORACLE_final_COMPLETE %>%
+  dplyr::group_by(Sequential_number) %>%
+  dplyr::summarize(mean_BEC = mean(BEC, na.rm = TRUE))
+```
+
+
+```{r, eval = FALSE}
+# Calculate the mean FEV1 reversibility of the 10 imputations per patient in the dataset
+patient_mean_REV_NR <- imp_data_ORACLE_final_COMPLETE %>%
+  dplyr::group_by(Sequential_number) %>%
+  dplyr::summarize(mean_REV = mean(FEV1_PCT_reversibility_postBD, na.rm = TRUE))
+```
+
+
+```{r, eval = FALSE}
+# Join the dataset and the new mean variable for FeNO
+imp_data_ORACLE_final_COMPLETE <- 
+  left_join(imp_data_ORACLE_final_COMPLETE, patient_mean_FeNO_NR, by = "Sequential_number")
+```
+
+
+```{r, eval = FALSE}
+# Join the dataset and the new mean variable for BEC
+imp_data_ORACLE_final_COMPLETE <- 
+  left_join(imp_data_ORACLE_final_COMPLETE, patient_mean_BEC_NR, by = "Sequential_number")
+```
+
+
+```{r, eval = FALSE}
+# Join the dataset and the new mean variable for REV (reversibility)
+imp_data_ORACLE_final_COMPLETE <- 
+  left_join(imp_data_ORACLE_final_COMPLETE, patient_mean_REV_NR, by = "Sequential_number")
+```
+
+
+```{r, eval = FALSE}
+# Create FeNO groups for the three curves in the spline plot
+imp_data_ORACLE_final_COMPLETE <- imp_data_ORACLE_final_COMPLETE %>%
+  mutate(FeNO_3groups_mean = case_when(
+    mean_FeNO < 25 ~ "A",
+    mean_FeNO >= 25 & mean_FeNO < 50 ~ "B",
+    mean_FeNO >= 50 ~ "C"
+  ))
+```
+
+
+```{r, eval = FALSE}
+# Create a subset of one imputed dataset
+subset1 <- subset(imp_data_ORACLE_final_COMPLETE, .imp == 1)
+```
+
+
+```{r, eval = FALSE}
+# Load necessary library
+library(MASS) # Provides glm.nb() for negative binomial models
+library(rms)  # Provides rcs() for restricted cubic splines
+
+# Biomarkers
+# Fit a negative binomial regression model using the subset of data
+model <- glm.nb(
+  Number_severe_asthma_attacks_during_followup ~  # Outcome variable: Number of severe asthma attacks during follow-up
+    rcs(mean_BEC, 4) * FeNO_3groups_mean +        # Main predictor: Restricted cubic spline (4 knots) for mean BEC
+                                                  #               with interaction by FeNO group (3 categories)
+    ACQ_baseline_score_mean +                     # Covariate: Asthma Control Questionnaire baseline mean score
+    Any_severe_attack_previous_12m_0no_1yes +     # Covariate: Indicator for whether a severe attack occurred in the previous 12 months
+    FEV1_preBD_PCT_Baseline +                     # Covariate: Baseline FEV1 % predicted pre-bronchodilator
+    Treatment_step +                              # Covariate: Treatment step (categorical variable)
+    FeNO_baseline_ppb *                            
+    Blood_Eos_baseline_x10_9_cells_per_L_zeroreplaced + # Covariate: Interaction between FeNO and Baseline Blood Eosinophil Count
+    offset(Follow_up_duration_days) +             # Offset: Follow-up duration in days (log-transformed to account for exposure)
+    as.factor(Enrolled_Trial_name),               # Covariate: Trial name (categorical variable)
+  data = subset1                                  # Subset of data used for fitting the model
+)
+
+```
+
+
+```{r, eval = FALSE}
+# Load necessary library
+library(ggplot2)
+
+# Create a spline curve for BEC and FeNO using ggplot2
+spline <- ggplot(
+  data = subset1,                                    # Data: Use the subset1 dataset
+  aes(
+    x = mean_BEC,                                    # X-axis: Mean BEC (mean_BEC)
+    y = predict(model, type = "response"),           # Y-axis: Predicted severe asthma attack rate based on the fitted model
+    colour = FeNO_3groups_mean,                      # Line color: Different colors for each FeNO group
+    fill = FeNO_3groups_mean                         # Fill color: Corresponds to FeNO groups
+  )
+) +
+  geom_smooth(alpha = 0.3) +                         # Add a smooth curve with slight transparency
+  xlab("Baseline BEC (x10^9 cells/L)") +             # X-axis label: Include units for clarity
+  ylab("Estimated annualised Severe Asthma Attack Rate") + # Y-axis label: Explains the outcome variable
+  scale_color_manual(
+    values = c("green3", "orange2", "red3"),         # Custom colors for FeNO groups
+    labels = c("<25", "25-50", "≥50"),               # Legend labels for FeNO groups
+    name = "FeNO (ppb)"                              # Legend title
+  ) +
+  scale_fill_manual(
+    values = c("green3", "orange2", "red3"),         # Same custom colors for the fill
+    labels = c("<25", "25-50", "≥50"),               # Same legend labels
+    name = "FeNO (ppb)"                              # Same legend title
+  ) +
+  scale_x_continuous(
+    trans = "log",                                   # Log-transform the X-axis
+    limits = c(0.1, 1.5),                            # Set axis limits to clinically logical values
+    breaks = c(0.1, 0.15, 0.3, 0.6, 1, 1.5)          # Add specific tick marks for readability
+  ) +
+  scale_y_continuous(
+    breaks = c(0.6, 1.0, 1.4, 1.8, 2.2)              # Add specific tick marks for the Y-axis
+  ) +
+  theme(                                             # Customize plot theme
+    axis.text.x = element_text(face = "bold", size = 12), # Bold and slightly larger font for X-axis labels
+    axis.text.y = element_text(face = "bold", size = 12), # Bold and slightly larger font for Y-axis labels
+    axis.title = element_text(face = "bold", size = 12),  # Bold and slightly larger font for axis titles
+    legend.title = element_text(face = "bold", size = 12),# Bold legend title
+    legend.text = element_text(size = 12),                # Slightly larger font for legend text
+    plot.title = element_text(face = "bold", size = 16),  # Bold, larger font for plot title
+    panel.background = element_blank(),                   # Remove the background grid for a clean look
+    panel.grid = element_line(colour = "#ebebeb"),        # Add light grid lines for clarity
+    axis.line = element_line(colour = "black"),           # Black axis lines for better contrast
+    legend.position = "top"                               # Move legend to the top of the plot
+  ) +
+  labs(title = "A")                                       # Add a title to the plot
+
+# Save the plot as a PNG file
+ggsave(
+  "plot.png",                                             # File name
+  spline,                                                 # Plot object to save
+  width = 8,                                              # Plot width in inches
+  height = 6,                                             # Plot height in inches
+  units = "in",                                           # Units for dimensions
+  dpi = 600                                               # High resolution (600 DPI)
+)
+
+# Use Cairo PDF package for fonts and superscript use
+install.packages("Cairo")
+library(Cairo)
+
+# Save the plot to files
+cairo_pdf(file = "xxxx-xx-xx Fig3AC Spline curve biomarkers version x.pdf", width = 8, height = 6)
+plot(spline)
+dev.off()
+```
+
+
+
+```{r, eval = FALSE}
+# Reversibility
+# Fit a negative binomial regression model using the subset of data
+model_rev <- glm.nb(
+  Number_severe_asthma_attacks_during_followup ~  # Outcome variable: Number of severe asthma attacks during follow-up
+    rcs(mean_REV, 4) +                            # Main predictor: Restricted cubic spline (4 knots) for mean FEV1% reversibility
+    ACQ_baseline_score_mean +                     # Covariate: Asthma Control Questionnaire baseline mean score
+    Any_severe_attack_previous_12m_0no_1yes +     # Covariate: Indicator for severe asthma attack in the previous 12 months
+    FEV1_preBD_PCT_Baseline +                     # Covariate: Baseline FEV1% predicted pre-bronchodilator
+    Treatment_step +                              # Covariate: Treatment step (categorical variable)
+    FeNO_baseline_ppb +                           # Covariate: Baseline Fractional Exhaled Nitric Oxide (continuous variable)
+    Blood_Eos_baseline_x10_9_cells_per_L_zeroreplaced + # Covariate: Baseline Blood Eosinophil Count (continuous variable)
+    offset(Follow_up_duration_days) +             # Offset: Follow-up duration in days (log-transformed for exposure adjustment)
+    as.factor(Enrolled_Trial_name),               # Covariate: Trial name as a categorical variable
+  data = subset1                                  # Subset of data used for fitting the model
+)
+
+```
+
+
+```{r, eval = FALSE}
+# Create a spline curve for FEV1% reversibility using ggplot2
+
+plot_fev_rev <- 
+  ggplot(data = subset1, 
+         aes(x = mean_REV, 
+             y = predict(model_rev, type="response"))) +
+  geom_smooth(fill="lightblue") +
+  xlab("FEV1 Reversibility post-bronchodilator (%)") +
+  ylab("Estimated annualised Severe Asthma Attack Rate") +
+  scale_y_continuous(breaks=c(0.2,0.4,0.6,0.8,1.0,1.2)) +
+  scale_x_continuous(limits=c(-10,90), 
+                     breaks=c(-10,0,10,20,30,40,50,60,70,80,90)) +
+  theme(axis.text.x = element_text(face = "bold", 
+                                   size = 12),
+        axis.text.y = element_text(face = "bold", 
+                                   size = 12),
+        axis.title = element_text(face = "bold", 
+                                  size = 12),
+        panel.background = element_blank(),
+        panel.grid = element_line(colour = "#ebebeb"),
+        axis.line = element_line(colour = "black"))
+
+# Save the plot to files with ggdave
+ggsave("xxxx-xx-xx Fig3AC Spline curve reversibility version x.pdf", plot_fev_rev, width = 8, height = 6, units = "in", dpi = 600)
+
+# Or use Cairo PDF package for fonts and superscript use
+install.packages("Cairo")
+library(Cairo)
+
+# Save the plot to files
+cairo_pdf(file = "xxxx-xx-xx Fig3AC Spline curve reversibility with Cairo version x.pdf", width = 8, height = 6)
+plot(plot_fev_rev)
+dev.off()
+
+```
+
+
+# Figure 3B & 3D: Density plots BEC FeNO & Density plot FEV1% reversibility
+
+```{r, eval = FALSE}
+# Load necessary library
+library(ggplot2)
+
+# Create a density plot for Blood Eosinophil Count (BEC) grouped by mean FeNO levels, without a legend and without Y axis ticks
+dens_bec_feno <- ggplot(subset1, 
+                        aes(x = mean_BEC, 
+                            fill = FeNO_3groups_mean)) + 
+  geom_density(alpha = 0.4) +                              # Plot the density with 40% transparency for overlapping areas
+  scale_fill_manual(values = c("A" = "green3", 
+                                "B" = "orange2", 
+                                "C" = "red3")) +           # Custom fill colors matching FeNO groups
+  scale_x_continuous(trans = "log",                        # Log-transformed x-axis to better visualize BEC
+                     limits = c(0.1, 1.5),                 # Set x-axis range on a clinically logical scale
+                     breaks = c(0.1, 0.15, 0.3, 0.6, 1, 1.5)) + # Set specific ticks on x-axis
+  labs(x = "Blood Eosinophil Count (x10^9 cells/L)",       # Label for x-axis
+       y = "Probability density") +                        # Label for y-axis
+  theme(axis.text.y = element_blank(),                    # No Y axis labels
+        axis.ticks.y = element_blank(),
+        axis.text.x = element_text(face = "bold", size = 12),  # Bold and size 12 for x-axis tick labels
+        axis.title = element_text(face = "bold", size = 12),   # Bold and size 12 for axis titles
+        panel.background = element_blank(),                   # Remove background color
+        panel.grid = element_line(colour = "#ebebeb"),        # Light grey grid lines
+        axis.line = element_line(colour = "black"),           # Black axis lines
+        legend.position = "none")                             # Remove legend
+
+# Save the plot to a png file using ggsave
+ggsave("xxxx-xx-xx Fig3BD Density plot biomarkers version x.png", 
+       dens_bec_feno, 
+       width = 8, 
+       height = 2, 
+       units = "in", 
+       dpi = 300)        # Save plot as PNG with specified dimensions and resolution
+
+# Save the plot to files with Cairo for PDFs
+library(Cairo)
+
+cairo_pdf(file = "xxxx-xx-xx Fig3BD Density plot biomarkers with Cairo version x.pdf", width = 8, height = 2)
+plot(dens_bec_feno)
+dev.off()
+
+```
+
+
+```{r, eval = FALSE}
+# Create a density plot for FEV1% reversibility, without Y axis ticks
+
+dens_rev <- ggplot(subset1, 
+                   aes(x = mean_REV)) + 
+  geom_density(fill = "lightblue", alpha = 0.4) +         # Plot density with light blue fill and 40% transparency
+  scale_x_continuous(limits = c(-10, 90),                 # Set x-axis range to match spline curve
+                     breaks = seq(-10, 90, by = 10)) +    # Tick marks every 10 units on x-axis
+  labs(x = "FEV1 Reversibility post-bronchodilator (%)",  # x-axis label
+       y = "Probability density") +                       # y-axis label
+  theme(axis.text.y = element_blank(),                    # No Y axis labels
+        axis.ticks.y = element_blank(),
+        axis.text.x = element_text(face = "bold", 
+                                   size = 12),
+        axis.title = element_text(face = "bold", 
+                                  size = 12),
+        panel.background = element_blank(),
+        panel.grid = element_line(colour = "#ebebeb"),
+        axis.line = element_line(colour = "black"))
+
+# Save the plot to a png file
+ggsave("xxxx-xx-xx Fig3BD Density plot reversibility version x.png", 
+       dens_rev, 
+       width = 8, 
+       height = 2, 
+       units = "in", 
+       dpi = 300)     # Save plot as PNG
+
+# Save the plot to files with Cairo for PDFs
+cairo_pdf(file = "xxxx-xx-xx Fig3BD Density plot reversibility with Cairo version x.pdf", width = 8, height = 2)
+plot(dens_rev)
+dev.off()
+
+```
+
+
+# Fig S16B: Density plot FEV1% reversibility by treatment step
+
+```{r, eval = FALSE}
+# Create a density plot for FEV1% reversibility, without Y axis ticks
+# Supplementary figure S16 B: by treatment step
+subset1$Treatment_step <- as.factor(subset1$Treatment_step)
+
+dens_rev_suppl <- ggplot(subset1, 
+                   aes(x = mean_REV,
+                       fill = Treatment_step)) +           # Add that you want a density plot per treatment step
+  geom_density(alpha = 0.4) +                             # Plot density with  40% transparency
+  scale_fill_manual(values = c("1" = "deeppink", 
+                                "2" = "green", 
+                                "3" = "blue",
+                                "4" = "gray31",
+                                "5" = "orange")) +                  # Custom fill colors
+  scale_x_continuous(limits = c(-10, 90),                 # Set x-axis range to match spline curve
+                     breaks = seq(-10, 90, by = 10)) +    # Tick marks every 10 units on x-axis
+  labs(x = "FEV1 Reversibility post-bronchodilator (%)",  # x-axis label
+       y = "Probability density") +                       # y-axis label
+  theme(axis.text.y = element_blank(),                    # No Y axis labels
+        axis.ticks.y = element_blank(),
+        axis.text.x = element_text(face = "bold", 
+                                   size = 12),
+        axis.title = element_text(face = "bold", 
+                                  size = 12),
+        panel.background = element_blank(),
+        panel.grid = element_line(colour = "#ebebeb"),
+        axis.line = element_line(colour = "black"))
+
+# Save the plot to a png file
+ggsave("xxxx-xx-xx FigS16B Density plot reversibility by treatstep version x.png", 
+       dens_rev, 
+       width = 8, 
+       height = 2, 
+       units = "in", 
+       dpi = 300)     # Save plot as PNG
+
+# Save the plot to files with Cairo for PDFs
+cairo_pdf(file = "xxxx-xx-xx FigS16B Density plot reversibility by treatstep with Cairo version x.pdf", width = 8, height = 2)
+plot(dens_rev_suppl)
+dev.off()
+
+```
+
+
+# Figure 3ABCD: make a plot grid of 2x2
+
+```{r, eval = FALSE}
+# Load necessary packages
+library(gridExtra)
+library(grid)
+
+# Define the file paths of the PNG images
+file_paths <- c("Network:/Figure name 3A spline.png", "Network:/Figure name 3C spline.png", "Network:/Figure name 3B density.png", "Network:/Figure name 3D density.png")
+
+# Read the PNG images as raster objects
+plots <- lapply(file_paths, function(path) {
+  rasterGrob(png::readPNG(path), interpolate = TRUE)
+})
+
+# Arrange the plots in a 2x2 grid
+grid.arrange(grobs = plots, ncol = 2, nrow = 2)
+
+```

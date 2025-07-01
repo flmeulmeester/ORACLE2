@@ -1,0 +1,574 @@
+---
+title: "2025-07-01 ORACLE2 Markdown_pt9_forest_plots_Meulmeester"
+author: "FL Meulmeester"
+date: "2025-07-01"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+<style>
+body {
+text-align: justify}
+</style>
+
+<style type="text/css">
+  body{
+  font-size: 12pt;
+}
+</style>
+
+<style type="text/css">
+.main-container {
+  max-width: 1600px;
+  margin-left: auto;
+  margin-right: auto;
+}
+</style>
+
+
+# Loading the libraries
+ 
+```{r Packages, eval = FALSE, results = 'hide'}
+
+# Set CRAN mirror
+r <- getOption("repos")
+r["CRAN"] <- "http://cran.us.r-project.org"
+options(repos = r)
+
+# Vector of required packages
+Packages <- c(
+  "readstata13", "readxl", "dplyr", "tidyverse", "data.table", "ggplot2", "car",
+  "epiDisplay", "lubridate", "table1", "mice", "VIM", "caret", "lsr", "tidymodels",
+  "sjPlot", "stargazer", "Gmisc", "purrr", "corrplot", "ggcorrplot", "Hmisc",
+  "naniar", "lme4", "MASS", "broom", "nnet", "pROC", "rms", "gridExtra",
+  "survival", "ggsurvfit", "survminer", "fmsb", "DescTools"
+)
+
+# Install any missing packages
+installed <- Packages %in% rownames(installed.packages())
+if (any(!installed)) {
+  install.packages(Packages[!installed])
+}
+
+# Load all packages
+# Use invisible() to keep your console output clean
+invisible(lapply(Packages, library, character.only = TRUE))
+```
+
+
+# Data import
+
+```{r, eval = FALSE}
+# This R code uses the results of the negative binomial regression models of part 8: "2025-06-30 ORACLE2 Markdown_pt8_negative_binomial_regression_Meulmeester"
+
+# The RRs and 95% confidence intervals were stored in a Excel dataframe
+## You can also save the results from the negative binomial models in a dataframe in R and use the dataframe here to make the forest plot. 
+
+data_uni <- suppressWarnings(read_excel("xxxx-xx-xx Negative binomial models ORACLE2.xlsx", sheet = "name sheet here"))
+data_uni <- data_uni[c(24,25,8,4:7,20,23,22,1:3,9:19,21,26),] #reorder variables to match the figure
+```
+
+
+# Figure 2: Forest plots (forester package)
+
+```{r, eval = FALSE}
+# The forest plots were created using the forestploter package from Github
+install.packages("devtools")
+devtools::install_github("adayim/forestploter")
+library(forestploter)
+```
+
+
+```{r, eval = FALSE}
+# Create superscripts for footnotes
+data_uni <- data_uni %>%
+   mutate(across(everything(), 
+                ~ ifelse(grepl("a$", .), 
+                         gsub("a$", "\u1D43", .), 
+                         .)))
+
+data_uni <- data_uni %>%
+   mutate(across(everything(), 
+                ~ ifelse(grepl("b,c$", .), 
+                         gsub("b,c$", "\u1D47\u1D9C", .), 
+                         .)))
+
+data_uni <- data_uni %>%
+   mutate(across(everything(), 
+                ~ ifelse(grepl("b$", .), 
+                         gsub("b$", "\u1D47", .), 
+                         .)))
+
+data_uni <- data_uni %>%
+   mutate(across(everything(), 
+                ~ ifelse(grepl("c$", .), 
+                         gsub("c$", "\u1D9C", .), 
+                         .)))
+```
+
+
+```{r, eval = FALSE}
+# Define the theme of the forest plot
+tm <- forest_theme(base_size = 10,
+                   refline_col = "red",
+                   arrow_type = "closed",
+                   footnote_gp = gpar(col = "black", cex = 0.8),
+                   ci_lwd = 1.6)
+
+# Add a blank column for the forest plot to display CI
+# Adjust the column width with space
+data_uni$` ` <- paste(rep(" ", 40), collapse = " ")  # empty column
+
+data_uni$se_uni <- (log(data_uni$upper_uni) - log(data_uni$mean_uni))/1.96
+data_uni$se_multi <- (log(data_uni$upper_multi) - log(data_uni$mean_multi))/1.96
+
+# Create confidence interval column to display
+data_uni$`Rate ratio (95% CI) model 1` <- ifelse(is.na(data_uni$se_uni), "",
+                             sprintf("%.2f (%.2f to %.2f)",
+                                     data_uni$mean_uni, data_uni$lower_uni, data_uni$upper_uni))
+
+# Create confidence interval column to display
+data_uni$`Rate ratio (95% CI) model 2` <- ifelse(is.na(data_uni$se_multi), "",
+                             sprintf("%.2f (%.2f to %.2f)",
+                                     data_uni$mean_multi, data_uni$lower_multi, data_uni$upper_multi))
+
+# Make the forest plot
+
+# Basic plot
+p <-
+  forest(data_uni[,c(1,8,11,8,12)],
+         est = list(data_uni$mean_uni, data_uni$mean_multi),
+         lower = list(data_uni$lower_uni, data_uni$lower_multi),
+         upper = list(data_uni$upper_uni, data_uni$upper_multi),
+         sizes = 0.7,
+         ci_column = c(2,4),
+         ref_line = 1,
+         xlim = c(0.03, 3),
+         ticks_digits = 2,
+         ticks_at = c(0.03, 0.1, 0.3, 1, 3),
+         x_trans = "log10",
+         footnote = "\n\n\u1D43 Per 10-fold increase\n\u1D47 Dichotomous variable (yes/no)\n\u1D9C Patient-reported",
+         fontfamily = "Arial",
+         arrow_lab = c("Lower risk", "Higher risk"),
+         theme = tm
+         )
+
+# Create a placeholder string
+placeholder <- paste(rep(" ", 98), collapse = "")  # Adjust the number of spaces
+placeholder2 <- paste(rep(" ", 90), collapse = "")  # Adjust the number of spaces
+
+# Combine with the original texts
+combined_text <- paste("Main variables", placeholder, "Univariable", placeholder2, "Multivariable")
+
+# Edit plot using borders and text
+g <- add_border(p, part = "header", row = 1, where = "top")
+g <- add_border(g, part = "header", row = 1, where = "bottom")
+g <- insert_text(g,
+                 text = combined_text,
+                 row = 1,
+                 just = "left",
+                 gp = gpar(cex = 1, col = "darkblue", fontface = "bold.italic"))
+g <- insert_text(g,
+                 text = "\nOther variables explored",
+                 row = 11,
+                 just = "left",
+                 gp = gpar(cex = 1, col = "darkblue", fontface = "bold.italic"))
+
+# Use Cairo PDF package for fonts and superscript use
+install.packages("Cairo")
+library(Cairo)
+
+# Save the plot to files
+cairo_pdf(file = "xxxx-xx-xx Fig 2 Forest Plot version x.pdf", width = 15, height = 10)
+plot(g)
+dev.off()
+```
+
+
+```{r, eval = FALSE}
+# If you want to make a forest plot including the p values, use this part of the code
+
+data_pval <- suppressWarnings(read_excel("xxxx-xx-xx Negative binomial models ORACLE2.xlsx", sheet = "name sheet here"))
+data_pval <- data_pval[c(25,26,8,4:7,21,24,23,1:3,9:20,22,27),]
+```
+
+
+```{r, eval = FALSE}
+
+# Define the theme of the forest plot
+tm <- forest_theme(base_size = 10,
+                   refline_col = "red",
+                   arrow_type = "closed",
+                   footnote_gp = gpar(col = "black", cex = 0.8),
+                   ci_lwd = 1.6)
+
+# Add a blank column for the forest plot to display CI
+# Adjust the column width with space
+data_pval$` ` <- paste(rep(" ", 40), collapse = " ")  # empty column
+
+data_pval$se_uni <- (log(data_pval$upper_uni) - log(data_pval$mean_uni))/1.96
+data_pval$se_multi <- (log(data_pval$upper_multi) - log(data_pval$mean_multi))/1.96
+
+# Create confidence interval column to display
+data_pval$`Rate ratio (95% CI) model 1` <- ifelse(is.na(data_pval$se_uni), "",
+                             sprintf("%.2f (%.2f to %.2f)",
+                                     data_pval$mean_uni, data_pval$lower_uni, data_pval$upper_uni))
+
+# Create confidence interval column to display
+data_pval$`Rate ratio (95% CI) model 2` <- ifelse(is.na(data_pval$se_multi), "",
+                             sprintf("%.2f (%.2f to %.2f)",
+                                     data_pval$mean_multi, data_pval$lower_multi, data_pval$upper_multi))
+
+# Create p-value column to display
+data_pval$`p-value model 1` <- ifelse(
+  data_pval$pval_uni < 0.0001, 
+  "<0.0001", 
+  format(round(data_pval$pval_uni, 4), nsmall = 4)
+)
+
+# Create p-value column to display
+data_pval$`p-value model 2` <- ifelse(
+  data_pval$pval_multi < 0.0001, 
+  "<0.0001", 
+  format(round(data_pval$pval_multi, 4), nsmall = 4)
+)
+
+# Make the forest plot
+
+# Basic plot
+p <-
+  forest(data_pval[,c(1,10,13,15,10,14,16)],
+         est = list(data_pval$mean_uni, data_pval$mean_multi),
+         lower = list(data_pval$lower_uni, data_pval$lower_multi),
+         upper = list(data_pval$upper_uni, data_pval$upper_multi),
+         sizes = 0.7,
+         ci_column = c(2,5),
+         ref_line = 1,
+         xlim = c(0.03, 3),
+         ticks_digits = 2,
+         ticks_at = c(0.03, 0.1, 0.3, 1, 3),
+         x_trans = "log10",
+         footnote = "\n\n* Patient-reported (yes/no)\n** Per 10-fold increase",
+         arrow_lab = c("Lower risk", "Higher risk"),
+         theme = tm
+         )
+
+# Create a placeholder string
+placeholder <- paste(rep(" ", 113), collapse = "")  # Adjust the number of spaces
+placeholder2 <- paste(rep(" ", 135), collapse = "")  # Adjust the number of spaces
+
+# Combine with the original texts
+combined_text <- paste("Main variables", placeholder, "Univariable", placeholder2, "Multivariable")
+
+# Edit plot using borders and text
+g <- add_border(p, part = "header", row = 1, where = "top")
+g <- add_border(g, part = "header", row = 1, where = "bottom")
+g <- insert_text(g,
+                 text = combined_text,
+                 row = 1,
+                 just = "left",
+                 gp = gpar(cex = 1, col = "darkblue", fontface = "bold.italic"))
+g <- insert_text(g,
+                 text = "\nOther variables explored",
+                 row = 11,
+                 just = "left",
+                 gp = gpar(cex = 1, col = "darkblue", fontface = "bold.italic"))
+
+# Save the plot to files
+pdf(file = "xxxx-xx-xx Fig 2 Forest Plot with pval version x.pdf", width = 15, height = 10)
+plot(g)
+dev.off()
+```
+
+
+# Figure S9: Forest plots scaling 25-75th percentiles
+
+```{r, eval = FALSE}
+# We created another forest plot using the 25-75th percentile scaling method described by prof. Frank Harrell
+data_perc <- suppressWarnings(read_excel("xxxx-xx-xx Negative binomial models standardized 25-75 percentile.xlsx", 
+                                         sheet = "name your sheet"))
+data_perc <- data_perc[c(25,26,4:8,21,24,23,1:3,9:20,22,27),] #reorder variables to match the figure
+```
+
+
+```{r, eval = FALSE}
+# Define theme
+tm <- forest_theme(base_size = 10,
+                   refline_col = "red",
+                   arrow_type = "closed",
+                   footnote_gp = gpar(col = "black", cex = 0.8),
+                   ci_lwd = 1.6)
+
+# Add a blank column for the forest plot to display CI.
+# Adjust the column width with space.
+data_perc$` ` <- paste(rep(" ", 40), collapse = " ")  # empty column
+
+data_perc$se <- (log(data_perc$upper_multi) - log(data_perc$mean_multi))/1.96
+
+
+# Create confidence interval column to display
+data_perc$`Rate ratio (95% CI) model 2` <- ifelse(is.na(data_perc$se), "",
+                             sprintf("%.2f (%.2f to %.2f)",
+                                     data_perc$mean_multi, data_perc$lower_multi, data_perc$upper_multi))
+
+# Make the plot
+
+p <-
+  forest(data_perc[,c(1,8,10)],
+         est = data_perc$mean_multi,
+         lower = data_perc$lower_multi,
+         upper = data_perc$upper_multi,
+         sizes = 0.5,
+         ci_column = 2,
+         ref_line = 1,
+         xlim = c(0.03, 3),
+         ticks_digits = 2,
+         ticks_at = c(0.03, 0.1, 0.3, 1, 3),
+         x_trans = "log10",
+         footnote = "\n* Patient-reported dichotomous variable (yes/no)",
+         arrow_lab = c("Lower risk", "Higher risk"),
+         theme = tm
+         )
+
+# Create a placeholder string
+placeholder <- paste(rep(" ", 100), collapse = "")  # Adjust the number of spaces
+
+# Combine with the original texts
+combined_text <- paste("Main variables", placeholder, "Multivariable")
+
+g <- add_border(p, part = "header", row = 1, where = "top")
+g <- add_border(g, part = "header", row = 1, where = "bottom")
+g <- insert_text(g,
+                 text = combined_text,
+                 row = 1,
+                 just = "left",
+                 gp = gpar(cex = 1, col = "darkblue", fontface = "bold.italic"))
+g <- insert_text(g,
+                 text = "\nOther variables explored",
+                 row = 11,
+                 just = "left",
+                 gp = gpar(cex = 1, col = "darkblue", fontface = "bold.italic"))
+
+# Save the plot to files
+pdf(file = "xxxx-xx-xx Fig S9 Forest Plot percentiles version x.pdf", width = 15, height = 10)
+plot(g)
+dev.off()
+```
+
+
+```{r, eval = FALSE}
+# Another forest plot was created using the same percentile scaling method, but displaying only the biomarkers BEC and FeNO
+
+# Make a smaller dataset
+data_perc_bm <- data_perc[c(1,2),]
+
+# Make the plot
+p <-
+  forest(data_perc_bm[,c(1,8,10)],
+         est = data_perc_bm$mean_multi,
+         lower = data_perc_bm$lower_multi,
+         upper = data_perc_bm$upper_multi,
+         sizes = 0.5,
+         ci_column = 2,
+         ref_line = 1,
+         xlim = c(0.03, 3),
+         ticks_digits = 2,
+         ticks_at = c(0.03, 0.1, 0.3, 1, 3),
+         x_trans = "log10",
+         #footnote = "\n* Dichotomous variable (yes/no)",
+         arrow_lab = c("Lower risk", "Higher risk"),
+         theme = tm
+         )
+
+# Create a placeholder string
+placeholder <- paste(rep(" ", 90), collapse = "")  # Adjust the number of spaces
+
+# Combine with the original texts
+combined_text <- paste("Biomarkers", placeholder, "Multivariable")
+
+g <- add_border(p, part = "header", row = 1, where = "top")
+g <- add_border(g, part = "header", row = 1, where = "bottom")
+g <- insert_text(g,
+                 text = combined_text,
+                 row = 1,
+                 just = "left",
+                 gp = gpar(cex = 1, col = "darkblue", fontface = "bold.italic"))
+
+# Save the plot to files
+pdf(file = "xxxx-xx-xx Fig S9 Forest Plot percentiles biomarkers version x.pdf", width = 15, height = 10)
+plot(g)
+dev.off()
+```
+
+
+# Figure S9: Forest plots biomarkers log2
+
+```{r, eval = FALSE}
+# We created another supplementary forest plot using the log base 2 values for FeNO and BEC biomarkers
+
+data_log2 <- suppressWarnings(read_excel("xxxx-xx-xx Negative binomial models.xlsx", sheet = "name your sheet"))
+data_log2<- data_log2[c(27,28),] # keep only FeNO and BEC
+```
+
+
+```{r, eval = FALSE}
+# Define theme
+tm <- forest_theme(base_size = 10,
+                   refline_col = "red",
+                   arrow_type = "closed",
+                   footnote_gp = gpar(col = "black", cex = 0.8),
+                   ci_lwd = 1.6)
+
+# Add a blank column for the forest plot to display CI.
+# Adjust the column width with space.
+data_log2$` ` <- paste(rep(" ", 40), collapse = " ")  # empty column
+
+data_log2$se <- (log(data_log2$upper_multi) - log(data_log2$mean_multi))/1.96
+
+
+# Create confidence interval column to display
+data_log2$`Rate ratio (95% CI) model 2` <- ifelse(is.na(data_log2$se), "",
+                             sprintf("%.2f (%.2f to %.2f)",
+                                     data_log2$mean_multi, data_log2$lower_multi, data_log2$upper_multi))
+
+# Make the plot
+p <-
+  forest(data_log2[,c(1,8,10)],
+         est = data_log2$mean_multi,
+         lower = data_log2$lower_multi,
+         upper = data_log2$upper_multi,
+         sizes = 0.5,
+         ci_column = 2,
+         ref_line = 1,
+         xlim = c(0.03, 3),
+         ticks_digits = 2,
+         footnote = "\n\n* Per 2-fold\nincrease",
+         ticks_at = c(0.03, 0.1, 0.3, 1, 3),
+         x_trans = "log10",
+         #footnote = "\n* Dichotomous variable (yes/no)",
+         arrow_lab = c("Lower risk", "Higher risk"),
+         theme = tm
+         )
+
+# Create a placeholder string
+placeholder <- paste(rep(" ", 69), collapse = "")  # Adjust the number of spaces
+
+# Combine with the original texts
+combined_text <- paste("Biomarkers", placeholder, "Multivariable")
+
+g <- add_border(p, part = "header", row = 1, where = "top")
+g <- add_border(g, part = "header", row = 1, where = "bottom")
+g <- insert_text(g,
+                 text = combined_text,
+                 row = 1,
+                 just = "left",
+                 gp = gpar(cex = 1, col = "darkblue", fontface = "bold.italic"))
+
+# Save the plot to files
+pdf(file = "xxxx-xx-xx Fig S9 Forest Plot log2 biomarkers version x.pdf", width = 15, height = 10)
+plot(g)
+dev.off()
+```
+
+
+# Figure S10: Forest plot full model with all covariates
+
+```{r, eval = FALSE}
+# Supplementary forest plot using a model adjusted for all covariates
+
+data_full <- suppressWarnings(read_excel("xxxx-xx-xx Negative binomial models.xlsx", sheet = "name you sheet"))
+data_full<- data_full[c(18,19,8,4:7,16,17,1:3,9:15,20),] # reorder rows to match the main forest plot
+
+# Create superscripts for footnotes
+data_full <- data_full %>%
+   mutate(across(everything(), 
+                ~ ifelse(grepl("a$", .), 
+                         gsub("a$", "\u1D43", .), 
+                         .)))
+
+data_full <- data_full %>%
+   mutate(across(everything(), 
+                ~ ifelse(grepl("b,c$", .), 
+                         gsub("b,c$", "\u1D47\u1D9C", .), 
+                         .)))
+
+data_full <- data_full %>%
+   mutate(across(everything(), 
+                ~ ifelse(grepl("b$", .), 
+                         gsub("b$", "\u1D47", .), 
+                         .)))
+
+data_full <- data_full %>%
+   mutate(across(everything(), 
+                ~ ifelse(grepl("c$", .), 
+                         gsub("c$", "\u1D9C", .), 
+                         .)))
+```
+
+
+```{r, eval = FALSE}
+# Define theme
+tm <- forest_theme(base_size = 10,
+                   refline_col = "red",
+                   arrow_type = "closed",
+                   footnote_gp = gpar(col = "black", cex = 0.8),
+                   ci_lwd = 1.6)
+
+# Add a blank column for the forest plot to display CI.
+# Adjust the column width with space.
+data_full$` ` <- paste(rep(" ", 40), collapse = " ")  # empty column
+
+data_full$se <- (log(data_full$upper_full) - log(data_full$mean_full))/1.96
+
+
+# Create confidence interval column to display
+data_full$`Rate ratio (95% CI) model 3` <- ifelse(is.na(data_full$se), "",
+                             sprintf("%.2f (%.2f to %.2f)",
+                                     data_full$mean_full, data_full$lower_full, data_full$upper_full))
+
+# Make the plot
+
+p <-
+  forest(data_full[,c(1,6,8)],
+         est = data_full$mean_full,
+         lower = data_full$lower_full,
+         upper = data_full$upper_full,
+         sizes = 0.5,
+         ci_column = 2,
+         ref_line = 1,
+         xlim = c(0.03, 3),
+         ticks_digits = 2,
+         ticks_at = c(0.03, 0.1, 0.3, 1, 3),
+         x_trans = "log10",
+         footnote = "\n\n\u1D43 Per 10-fold increase\n\u1D47 Dichotomous variable (yes/no)\n\u1D9C Patient-reported",
+         arrow_lab = c("Lower risk", "Higher risk"),
+         theme = tm
+         )
+
+# Create a placeholder string
+placeholder <- paste(rep(" ", 92), collapse = "")  # Adjust the number of spaces
+
+# Combine with the original texts
+combined_text <- paste("Variables model 3", placeholder, "Multivariable")
+
+g <- add_border(p, part = "header", row = 1, where = "top")
+g <- add_border(g, part = "header", row = 1, where = "bottom")
+g <- insert_text(g,
+                 text = combined_text,
+                 row = 1,
+                 just = "left",
+                 gp = gpar(cex = 1, col = "darkblue", fontface = "bold.italic"))
+
+# Use Cairo PDF package for fonts and superscript use
+install.packages("Cairo")
+library(Cairo)
+
+# Save the plot to files
+cairo_pdf(file = "xxxx-xx-xx Fig S10 Forest Plot Full Model version x.pdf", width = 15, height = 10)
+plot(g)
+dev.off()
+```
